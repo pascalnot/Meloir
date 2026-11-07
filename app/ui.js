@@ -194,7 +194,10 @@
     .num span { color: var(--mute); font-size: 13px; }
     .bar { display: grid; width: 100%; max-width: 760px; grid-template-columns: minmax(0, 220px) minmax(0, 1fr) 40px; gap: 14px; align-items: center; padding: 7px 0; }
     .bar span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-    .bar i { display: block; height: 3px; background: var(--fg); transform-origin: left; animation: grow .7s var(--ease) backwards; animation-delay: calc(var(--n) * 45ms + 150ms); }
+    /* An artist's bar fills once it scrolls into view, a moment after its row arrives. */
+    .bar i { display: block; height: 3px; background: var(--fg); transform-origin: left; transform: scaleX(0); }
+    .bar.filled i { transform: none; animation: grow .7s var(--ease) backwards; animation-delay: calc(var(--d, 0ms) * 3 + 150ms); }
+    #app.still .bar i { transform: none; }
     .bar small { color: var(--mute); text-align: right; font-size: 13px; }
     @keyframes grow { from { transform: scaleX(0); } }
 
@@ -607,6 +610,7 @@
         const belowEdge = !inView && entry.boundingClientRect.top > entry.rootBounds.top + entry.rootBounds.height / 2;
         el.style.setProperty('--d', (belowEdge ? 0 : Math.min(order++, MAX_REVEAL_STAGGER) * 16) + 'ms');
         el.classList.toggle('below', belowEdge);
+        if (inView && el.classList.contains('bar')) el.classList.add('filled');
       }
     }, { root: main, threshold: [CARD_SHOWN_AT, ROW_SHOWN_AT] });
     const followScroll = root => root.querySelectorAll('.row, .card, .bar').forEach(el => nearby.observe(el));
