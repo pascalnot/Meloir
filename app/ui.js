@@ -424,18 +424,16 @@
     .lyr { transition: transform 1.1s cubic-bezier(.22, .9, .24, 1); will-change: transform; }
     .lyrics.unsynced .lyr { padding: 22vh 0; transform: none !important; }
     .fl { padding: 11px 0; cursor: pointer; font: 600 32px/1.25 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: #333;
-      transform-origin: left center; transition: color .9s, transform 1s var(--ease), filter 1s; user-select: text; }
-    /* Lines around the sung one sit slightly out of focus. */
-    .lyrics:not(.unsynced) .fl:not(.on):not(:hover) { filter: blur(.7px); }
+      transform-origin: left center; transition: color .9s, transform 1s var(--ease); user-select: text; }
     .fl:hover { color: #6a6a6a; }
     .fl.past { color: #2a2a2a; }
     .fl.on { color: #4a4a4a; transform: scale(1.03); }
     .lyrics.unsynced .fl { color: #d0d0d0; cursor: default; font-size: 26px; }
-    .fl .w { display: inline-block; white-space: pre; transition: filter .8s, transform .8s var(--ease); }
-    /* The light runs through each word with a soft edge, and a sung word rises and glows a little. */
+    .fl .w { display: inline-block; white-space: pre; transition: text-shadow .8s; }
+    /* The light runs through each word with a soft edge, and a sung word glows a little. */
     .fl.on .w { color: transparent; -webkit-background-clip: text; background-clip: text;
       background-image: linear-gradient(90deg, #fff calc(var(--w, 0%) * 1.22 - 22%), #4a4a4a calc(var(--w, 0%) * 1.22)); }
-    .fl.on .w.lit { transform: translateY(-2px); filter: drop-shadow(0 0 14px rgba(255, 255, 255, .35)); }
+    .fl.on .w.lit { text-shadow: 0 0 14px rgba(255, 255, 255, .3); }
     .fctl { position: absolute; left: 50%; bottom: 26px; display: flex; gap: 22px; align-items: center; transform: translate(-50%, 10px);
       opacity: 0; transition: opacity .3s, transform .3s var(--ease); }
     #focus.awake .fctl { opacity: 1; transform: translate(-50%, 0); }
