@@ -211,7 +211,7 @@
     #menu button:active { transform: none; }
     #menu button:hover { background: var(--menu-hover); color: var(--fg); }
 
-    #app.compact .row { grid-template-columns: 40px minmax(0, 1fr) 28px 52px; }
+    #app.compact .row { grid-template-columns: 40px minmax(0, 1fr) 28px 52px; width: calc(100% + 10px); margin-left: -10px; padding-left: 10px; }
     #app.compact .row .n, #app.compact .row .al, #app.compact .row > span:empty { display: none; }
     #app.still *, #app.still *::before, #app.still *::after { animation: none !important; transition: none !important; }
     #app.still .below { opacity: 1; transform: none; }
@@ -273,10 +273,11 @@
     .play.alt:hover { background: var(--press); }
     .play.alt:disabled { color: var(--mute); transform: none; }
 
-    .row { display: grid; grid-template-columns: 32px 40px minmax(0, 1fr) minmax(0, .7fr) 28px 52px; gap: 12px; align-items: center;
-      width: 100%; padding: 6px 10px; }
+    /* Covers line up with the headings above them. The numbers hang in the margin to their left. */
+    .row { display: grid; grid-template-columns: 22px 40px minmax(0, 1fr) minmax(0, .7fr) 28px 52px; gap: 12px; align-items: center;
+      width: calc(100% + 40px); margin-left: -40px; padding: 6px 10px 6px 6px; }
     .row:hover { background: var(--hover); }
-    .recent .row { grid-template-columns: 40px minmax(0, 1fr) minmax(0, .7fr) 28px 52px; width: calc(100% + 20px); margin: 0 -10px; }
+    .recent .row { grid-template-columns: 40px minmax(0, 1fr) minmax(0, .7fr) 28px 52px; width: calc(100% + 20px); margin: 0 -10px; padding-left: 10px; }
     .recent .row .n { display: none; }
     .foldbutton { display: inline-flex; align-items: center; gap: 8px; color: inherit; font: inherit; }
     .foldbutton:hover { color: var(--fg); }
