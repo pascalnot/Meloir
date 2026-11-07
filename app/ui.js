@@ -11,7 +11,7 @@
   const SPLASH_LIMIT_MS = 15000;
   const RECENT_ON_HOME = 6, MAX_HISTORY = 30, MAX_SEARCHES = 8, KEEP_SEARCH_MS = 1500;
   const GLOW_TIGHT_GROW = 2, GLOW_WIDE_GROW = 14, GLOW_TIGHT_SOFT_PX = 12, GLOW_WIDE_SOFT_PX = 90;
-  const MUTE_FADE_MS = 140, UNMUTE_FADE_MS = 350, HIDDEN_BUTTONS_HEIGHT = 1, FULLSCREEN_SETTLE_MS = 350, NAV_MARK_PX = 16, TOAST_MS = 2600, DRAG_START_PX = 5, DRAG_EDGE_PX = 36, DRAG_SCROLL_PX = 8, DRAG_CLICK_MS = 100, QUEUE_SETTLE_MS = 900, GENRE_FOCUS_MS = 60;
+  const BACKDROP_MAX_OPACITY = 0.6, MUTE_FADE_MS = 140, UNMUTE_FADE_MS = 350, HIDDEN_BUTTONS_HEIGHT = 1, FULLSCREEN_SETTLE_MS = 350, NAV_MARK_PX = 16, TOAST_MS = 2600, DRAG_START_PX = 5, DRAG_EDGE_PX = 36, DRAG_SCROLL_PX = 8, DRAG_CLICK_MS = 100, QUEUE_SETTLE_MS = 900, GENRE_FOCUS_MS = 60;
   const PLAY_COUNTS_MS = 30000, SAVE_LISTENING_MS = 60000, MAX_STATS_SONGS = 400, STATS_TOP = 10, STATS_COUNT_MS = 900;
   const SHORTCUTS = [['Space', 'Play or pause'], ['F', 'Focus mode'], ['L', 'Lyrics in focus mode'], ['Q', 'Queue'], ['Ctrl+K', 'Search'],
     ['Ctrl+F', 'Filter songs'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
@@ -111,6 +111,13 @@
     .win.dots.on svg { transform: rotate(90deg); }
     /* The cursor glow sits behind everything, on the black. */
     nav, main { position: relative; z-index: 1; }
+    /* A soft, blurred copy of the cover behind everything. Two layers let one cover fade into the next. */
+    .backdrop { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .8s; }
+    #app.backdrop-on .backdrop { opacity: var(--backdrop, .3); }
+    .backdrop i { position: absolute; inset: -15%; background: center / cover no-repeat; filter: blur(80px) saturate(1.4); opacity: 0; transition: opacity 1.2s; }
+    #app.light .backdrop i { filter: blur(80px) saturate(1.3) brightness(1.25); }
+    .backdrop i.on { opacity: 1; }
+    #app.backdrop-on footer::before { display: none; }
     .cursor { position: absolute; left: 0; top: 0; width: 460px; height: 460px; margin: -230px 0 0 -230px; border-radius: 50%; z-index: 0; pointer-events: none;
       background: radial-gradient(circle, rgba(var(--glow), .075), rgba(var(--glow), .02) 40%, transparent 68%); opacity: 0; transition: opacity .4s; will-change: transform; }
     .cursor.on { opacity: 1; }
@@ -1249,6 +1256,17 @@
       const glowSwitch = (label, about, name, onChange) => h('div', { className: 'line sub' },
         h('div', {}, h('b', {}, label), h('p', {}, about)), prefSwitch(name, name === 'cursorGlow' ? 'Cursor glow' : 'Glow on ' + label.toLowerCase(), onChange));
 
+      const backdropValue = h('span', { className: 'value' });
+      const backdropLevel = h('input', { type: 'range', step: 1, ariaLabel: 'Cover backdrop strength',
+        oninput: () => {
+          fill(backdropLevel, +backdropLevel.value, 100);
+          meloir.setPref('coverBackdropLevel', +backdropLevel.value);
+          backdropValue.textContent = backdropLevel.value + '%';
+          applyLook();
+        } });
+      fill(backdropLevel, meloir.prefs.coverBackdropLevel, 100);
+      backdropValue.textContent = meloir.prefs.coverBackdropLevel + '%';
+
       const page = [
         h('h2', {}, 'Playback'),
         setting('Smooth transitions', 'Fades each song out, skips its last moments, and fades the next one in.', prefSwitch('smooth', 'Smooth transitions'),
@@ -1280,6 +1298,8 @@
             } });
           return button;
         })()),
+        setting('Cover backdrop', 'A soft, blurred copy of the cover behind everything.', prefSwitch('coverBackdrop', 'Cover backdrop', applyLook),
+          h('div', { className: 'wide' }, backdropLevel, backdropValue)),
         setting('Idle screen', 'After this long without input, the cover fills the screen until you move the mouse.', prefSwitch('idleFade', 'Idle screen', applyLook),
           h('div', { className: 'wide' }, idleLength, idleValue)),
 
@@ -2038,7 +2058,23 @@
     const toggleKeys = () => keysPanel.classList.toggle('on');
 
     const cursorGlow = h('div', { className: 'cursor' });
-    const app = h('div', { id: 'app', className: window.meloirNative ? 'native' : '' }, cursorGlow, titlebar, nav, main, footer, full, focus, queuePanel, grips, keysPanel, menu, toast);
+    const backdropLayers = [h('i'), h('i')];
+    const backdrop = h('div', { className: 'backdrop' }, backdropLayers);
+    let backdropShown = '', backdropFront = 0;
+    const showBackdrop = url => {
+      if (!url || url === backdropShown) return;
+      backdropShown = url;
+      // The next cover loads first, so the fade never shows an empty layer.
+      const image = new Image();
+      image.onload = () => {
+        if (url !== backdropShown) return;
+        backdropFront = 1 - backdropFront;
+        backdropLayers[backdropFront].style.backgroundImage = 'url("' + url + '")';
+        backdropLayers.forEach((layer, i) => layer.classList.toggle('on', i === backdropFront));
+      };
+      image.src = url;
+    };
+    const app = h('div', { id: 'app', className: window.meloirNative ? 'native' : '' }, backdrop, cursorGlow, titlebar, nav, main, footer, full, focus, queuePanel, grips, keysPanel, menu, toast);
     const rootEl = h('div', { id: 'meloir-root' });
     const shadow = rootEl.attachShadow({ mode: 'open' });
     const sheet = new CSSStyleSheet();
@@ -2111,6 +2147,8 @@
       app.style.setProperty('--glow-grow', GLOW_TIGHT_GROW + (GLOW_WIDE_GROW - GLOW_TIGHT_GROW) * size);
       app.style.setProperty('--glow-soft', GLOW_TIGHT_SOFT_PX + (GLOW_WIDE_SOFT_PX - GLOW_TIGHT_SOFT_PX) * size + 'px');
       app.classList.toggle('compact', meloir.prefs.compact);
+      app.classList.toggle('backdrop-on', !!meloir.prefs.coverBackdrop);
+      app.style.setProperty('--backdrop', meloir.prefs.coverBackdropLevel / 100 * BACKDROP_MAX_OPACITY);
       app.classList.toggle('still', meloir.prefs.still);
       if (!meloir.prefs.cursorGlow) cursorGlows.forEach(el => el.classList.remove('on'));
       if (!meloir.prefs.coverTilt) {
@@ -2232,6 +2270,7 @@
       const artists = names(s.item.artists);
       const picture = images[0] ? images[0].url : '';
       coverUrl = sized(picture, 'large');
+      showBackdrop(coverUrl);
       npCover.src = sized(picture, 'medium');
       const fullSizes = [sized(picture, 'full'), sized(picture, 'large')];
       fadeTo(fullCover, fullSizes, full.classList.contains('on'));

@@ -45,7 +45,7 @@
   meloir.prefs = {
     smooth: true, smoothSeconds: 4, playOnOpen: false, focusOnOpen: false, compact: false, still: false, showLyrics: true,
     cursorGlow: true, idleFade: true, idleSeconds: 60, coverTilt: true, beatGlow: true, dropGlow: true,
-    theme: 'dark', history: [], recentOpen: false, unmuteVolume: 50, discord: false, discordButton: true, searches: [], genres: {}, focusBlur: 22, focusBlurSize: 100, stats: { since: 0, ms: 0, plays: 0, tracks: {}, artists: {} },
+    theme: 'dark', history: [], recentOpen: false, unmuteVolume: 50, discord: false, discordButton: true, coverBackdrop: false, coverBackdropLevel: 40, searches: [], genres: {}, focusBlur: 22, focusBlurSize: 100, stats: { since: 0, ms: 0, plays: 0, tracks: {}, artists: {} },
   };
   Object.assign(meloir.prefs, window.meloirSavedPrefs);
   meloir.setPref = (name, value) => {
