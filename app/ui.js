@@ -234,8 +234,8 @@
     main { grid-row: 2; overflow-y: auto; margin-right: 5px; padding: 16px 40px 48px; min-width: 0; }
     .rise { animation: rise .35s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 16ms); }
     @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
-    .row, .card { transition: background-color .15s, opacity .35s var(--ease) var(--d, 0ms), transform .35s var(--ease) var(--d, 0ms); }
-    .row.below, .card.below { opacity: 0; transform: translateY(10px); }
+    .row, .card, .bar { transition: background-color .15s, opacity .35s var(--ease) var(--d, 0ms), transform .35s var(--ease) var(--d, 0ms); }
+    .row.below, .card.below, .bar.below { opacity: 0; transform: translateY(10px); }
     h1 { font: 600 32px/1.1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; letter-spacing: -.02em; }
     h2 { color: var(--mute); font-size: 13px; font-weight: 500; margin: 36px 0 14px; }
     .search { width: 100%; max-width: 520px; background: none; border: 0; border-bottom: 1px solid var(--faint); color: var(--fg);
@@ -609,16 +609,16 @@
         el.classList.toggle('below', belowEdge);
       }
     }, { root: main, threshold: [CARD_SHOWN_AT, ROW_SHOWN_AT] });
-    const followScroll = root => root.querySelectorAll('.row, .card').forEach(el => nearby.observe(el));
+    const followScroll = root => root.querySelectorAll('.row, .card, .bar').forEach(el => nearby.observe(el));
 
     // The rise when a page opens.
     const stagger = root => {
       followScroll(root);
-      root.querySelectorAll('h1, h2, .head, .set, .search').forEach((el, i) => {
+      root.querySelectorAll('h1, h2, .head, .set, .search, .note, .num').forEach((el, i) => {
         el.style.setProperty('--i', Math.min(i, MAX_REVEAL_STAGGER));
         el.classList.add('rise');
       });
-      riseIn(root.querySelectorAll('.row, .card'), main.getBoundingClientRect().bottom);
+      riseIn(root.querySelectorAll('.row, .card, .bar'), main.getBoundingClientRect().bottom);
     };
     const riseIn = (els, bottom) => {
       if (calm()) return;
