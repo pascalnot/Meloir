@@ -614,7 +614,7 @@
     // The rise when a page opens.
     const stagger = root => {
       followScroll(root);
-      root.querySelectorAll('h1, h2, .head, .set, .search, .note, .num').forEach((el, i) => {
+      root.querySelectorAll('h1, h2, .head, .set, .search, .note, .nums > .num').forEach((el, i) => {
         el.style.setProperty('--i', Math.min(i, MAX_REVEAL_STAGGER));
         el.classList.add('rise');
       });
