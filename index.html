@@ -115,13 +115,16 @@
   footer p + p { margin-top:6px; }
   footer a { color:var(--mute); }
 
-  .side { position:fixed; right:30px; top:50%; z-index:10; transform:translateY(-50%); display:none; flex-direction:column; opacity:0; transition:opacity .4s; }
-  .side.show { opacity:1; }
-  .side a { position:relative; padding:5px 0 5px 14px; color:var(--mute); font-size:13px; text-decoration:none; transition:color .25s, transform .25s var(--ease); }
+  /* Each name sits level with its section; one that is off screen waits in a stack at that edge. */
+  .side { position:fixed; right:0; top:0; z-index:10; width:160px; height:0; display:none; }
+  .side a { position:absolute; left:14px; right:0; top:-13px; display:flex; align-items:center; height:26px; color:var(--mute); font-size:13px; text-decoration:none; transition:color .25s, opacity .3s, scale .35s var(--ease), transform .25s var(--ease); animation:set-in .45s var(--ease) backwards; animation-delay:calc(var(--n) * 45ms + 1.15s); }
+  .side a.stacked { opacity:.55; scale:.93; }
   .side a:hover { color:var(--fg); transform:translateX(3px); }
-  .side a.on { color:var(--fg); font-weight:500; }
-  .mark { position:absolute; left:0; top:0; width:2px; height:16px; border-radius:1px; background:var(--fg); transition:transform .4s var(--ease); }
-  @media (min-width:1320px) { .side { display:flex; } }
+  .side a:active { transform:translateX(3px) scale(.97); }
+  .side a.on { color:var(--fg); font-weight:500; opacity:1; scale:1; }
+  @keyframes set-in { from { opacity:0; transform:translateX(14px); } }
+  .mark { position:absolute; left:0; top:-8px; width:2px; height:16px; border-radius:1px; background:var(--fg); }
+  @media (min-width:1320px) { .side { display:block; } }
 
   .fline { position:fixed; left:0; bottom:0; z-index:30; height:2px; width:0; background:var(--fg); opacity:calc(.7 + .3 * var(--beat,0)); }
   .fline::after { content:""; position:absolute; inset:0; box-shadow:0 0 16px 2px rgb(var(--glow)); opacity:var(--beat,0); }
@@ -331,20 +334,75 @@
   }, { threshold: .18 });
   $$('.rv').forEach(el => reveal.observe(el));
 
-  // The side list follows the page, with its marker gliding to the section you are in.
-  const side = $('#side'), mark = $('#mark'), links = $$('#side a'), sections = links.map(a => $(a.getAttribute('href')));
-  const line = $('#fline');
+  // The side list, as in the app's Settings: each name sits level with its section, and one that is
+  // off screen waits in a stack at that edge, in order, coming out as its section scrolls in. A click
+  // holds its choice until the scroll lands, so the marker goes straight there.
+  const AREA_TOP_PX = 52, SIDE_TOP_PX = 12, SIDE_ROW_PX = 26, SIDE_GLIDE_MS = 70, SIDE_REACHED_PX = 2, SIDE_JUMP_MS = 900;
+  const mark = $('#mark'), links = $$('#side a'), line = $('#fline');
+  const sections = links.map(a => { const s = $(a.getAttribute('href')); return s.querySelector('h2, .num') || s; });
+  const places = sections.map(() => null);
+  let held = 0, chosen = 0, frame = 0, lastFrame = 0, markAt = null;
+  const centre = el => { const box = el.getBoundingClientRect(); return box.top + box.height / 2; };
+  const topSlot = index => AREA_TOP_PX + SIDE_TOP_PX + SIDE_ROW_PX * (index + .5);
+  const bottomSlot = index => innerHeight - SIDE_TOP_PX - SIDE_ROW_PX * (sections.length - index - .5);
+  const glide = now => {
+    frame = 0;
+    const step = calm() ? 1 : 1 - Math.exp(-Math.min(now - lastFrame, 50) / SIDE_GLIDE_MS);
+    let moving = false;
+    const towards = (from, to) => {
+      const next = from === null ? to : from + (to - from) * step;
+      if (Math.abs(to - next) < .2) return to;
+      moving = true;
+      return next;
+    };
+    links.forEach((link, i) => {
+      const level = centre(sections[i]);
+      const wanted = Math.min(Math.max(level, topSlot(i)), bottomSlot(i));
+      link.classList.toggle('stacked', Math.abs(wanted - level) > 1);
+      places[i] = towards(places[i], wanted);
+      link.style.translate = '0 ' + places[i] + 'px';
+    });
+    markAt = towards(markAt, places[chosen]);
+    mark.style.translate = '0 ' + markAt + 'px';
+    lastFrame = now;
+    if (moving) frame = requestAnimationFrame(glide);
+  };
+  const place = () => {
+    if (frame) return;
+    lastFrame = performance.now() - 16;
+    frame = requestAnimationFrame(glide);
+  };
+  const select = index => {
+    chosen = index;
+    links.forEach((link, i) => link.classList.toggle('on', i === index));
+    place();
+  };
+  links.forEach((link, i) => {
+    link.style.setProperty('--n', i);
+    link.onclick = event => {
+      event.preventDefault();
+      clearTimeout(held);
+      held = setTimeout(() => { held = 0; }, SIDE_JUMP_MS);
+      select(i);
+      // Lands the section right beside its name, under the stack of those before it.
+      scrollTo({ top: scrollY + centre(sections[i]) - topSlot(i), behavior: calm() ? 'instant' : 'smooth' });
+    };
+  });
   const onScroll = () => {
-    const max = root.scrollHeight - innerHeight;
-    line.style.width = (max > 0 ? scrollY / max * 100 : 0) + '%';
-    let index = -1;
-    sections.forEach((s, i) => { if (s.getBoundingClientRect().top <= innerHeight * .45) index = i; });
-    side.classList.toggle('show', index >= 0);
-    links.forEach((a, i) => a.classList.toggle('on', i === index));
-    if (index >= 0) mark.style.transform = `translateY(${links[index].offsetTop + (links[index].offsetHeight - 16) / 2}px)`;
+    const scrollable = root.scrollHeight - innerHeight;
+    line.style.width = (scrollable > 0 ? scrollY / scrollable * 100 : 0) + '%';
+    place();
+    if (held) return;
+    // The last sections can't reach the top, so the line runs down the page as the end nears.
+    const nearEnd = Math.min(innerHeight, scrollable);
+    const toEnd = nearEnd > 0 ? Math.max(0, 1 - (scrollable - scrollY) / nearEnd) : 0;
+    const reached = sections.filter((section, i) => centre(section) <= topSlot(i) + SIDE_REACHED_PX + (innerHeight - topSlot(i)) * toEnd);
+    select(Math.max(0, reached.length - 1));
   };
   addEventListener('scroll', onScroll, { passive: true });
   addEventListener('resize', onScroll, { passive: true });
+  addEventListener('load', onScroll);
+  document.addEventListener('transitionend', event => { if (event.target.matches('.rv')) place(); });
   onScroll();
 
   // The line at the bottom pulses like the one in focus mode.
