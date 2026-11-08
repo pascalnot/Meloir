@@ -337,7 +337,7 @@
   // The side list, as in the app's Settings: each name sits level with its section, and one that is
   // off screen waits in a stack at that edge, in order, coming out as its section scrolls in. A click
   // holds its choice until the scroll lands, so the marker goes straight there.
-  const AREA_TOP_PX = 52, SIDE_TOP_PX = 12, SIDE_ROW_PX = 26, SIDE_GLIDE_MS = 70, SIDE_REACHED_PX = 2, SIDE_JUMP_MS = 900;
+  const AREA_TOP_PX = 52, SIDE_TOP_PX = 12, SIDE_ROW_PX = 26, SIDE_GLIDE_MS = 70, SIDE_REACHED_PX = 2, SIDE_JUMP_MS = 900, SIDE_CHOSEN_AT = .7;
   const mark = $('#mark'), links = $$('#side a'), line = $('#fline');
   const sections = links.map(a => { const s = $(a.getAttribute('href')); return s.querySelector('h2, .num') || s; });
   const places = sections.map(() => null);
@@ -396,7 +396,9 @@
     // The last sections can't reach the top, so the line runs down the page as the end nears.
     const nearEnd = Math.min(innerHeight, scrollable);
     const toEnd = nearEnd > 0 ? Math.max(0, 1 - (scrollable - scrollY) / nearEnd) : 0;
-    const reached = sections.filter((section, i) => centre(section) <= topSlot(i) + SIDE_REACHED_PX + (innerHeight - topSlot(i)) * toEnd);
+    // These sections are nearly a screen tall, so one counts as soon as its heading is well in view.
+    const at = innerHeight * SIDE_CHOSEN_AT;
+    const reached = sections.filter(section => centre(section) <= at + SIDE_REACHED_PX + (innerHeight - at) * toEnd);
     select(Math.max(0, reached.length - 1));
   };
   addEventListener('scroll', onScroll, { passive: true });
