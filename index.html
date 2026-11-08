@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meloir</title>
+<meta name="description" content="A pure black interface for the Spotify desktop app on Windows. The only colour on screen comes from the covers.">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<style>
+  /* Colours, sizes and timings follow the app's own stylesheet. */
+  :root { --ease:cubic-bezier(.2,.8,.2,1); --bg:#000; --fg:#fff; --mute:#8c8c8c; --faint:#4d4d4d; --line:#1a1a1a; --hover:#0f0f0f; --track:#2b2b2b; --knob:#9a9a9a; --dim:#4a4a4a; --glow:255,255,255; --font:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; --display:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif; color-scheme:dark; }
+  :root.light { --bg:#fff; --fg:#000; --mute:#6b6b6b; --faint:#a3a3a3; --line:#ececec; --hover:#f4f4f4; --track:#dcdcdc; --knob:#fff; --dim:#b8b8b8; --glow:0,0,0; color-scheme:light; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html { background:var(--bg); scroll-behavior:smooth; }
+  body { background:var(--bg); color:var(--fg); font:16px/1.55 var(--font); overflow-x:clip; -webkit-font-smoothing:antialiased; }
+  a { color:inherit; }
+  button { background:none; border:0; color:inherit; font:inherit; cursor:pointer; }
+  a:focus-visible, button:focus-visible { outline:1px solid var(--fg); outline-offset:3px; }
+  :root.still *, :root.still *::before, :root.still *::after { animation:none!important; transition:none!important; }
+  :root.still { scroll-behavior:auto; }
+  :root.still .rv { opacity:1; transform:none; }
+  :root.still .cursor, :root.still .splash { display:none; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation:none; mix-blend-mode:normal; }
+  ::view-transition-new(root) { z-index:2; }
+
+  .splash { position:fixed; inset:0; z-index:50; display:grid; place-items:center; background:var(--bg); pointer-events:none; animation:splash-out .55s var(--ease) 1.05s forwards; }
+  .splash svg { width:84px; height:84px; animation:breathe 1.05s ease-in-out both, leave .55s var(--ease) 1.05s forwards; }
+  @keyframes breathe { 0% { transform:scale(.8); opacity:0; } 60% { transform:scale(1); opacity:1; } 100% { transform:scale(.97); opacity:1; } }
+  @keyframes leave { to { transform:scale(1.6); opacity:0; } }
+  @keyframes splash-out { to { opacity:0; visibility:hidden; } }
+
+  .cursor { position:fixed; left:0; top:0; width:560px; height:560px; margin:-280px 0 0 -280px; border-radius:50%; pointer-events:none; z-index:0; background:radial-gradient(circle,rgba(var(--glow),.085),rgba(var(--glow),.022) 40%,transparent 68%); opacity:0; transition:opacity .4s; will-change:transform; }
+  .cursor.on { opacity:1; }
+
+  header { position:fixed; left:0; right:0; top:0; z-index:20; height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 20px; }
+  header::before { content:""; position:absolute; inset:0 0 -22px; z-index:-1; pointer-events:none; background:linear-gradient(to bottom,var(--bg) 40%,transparent); }
+  .brand { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:600; letter-spacing:.08em; text-decoration:none; }
+  .brand svg { width:18px; height:18px; transition:transform .4s var(--ease); }
+  .brand:hover svg { transform:rotate(-12deg) scale(1.12); }
+  .tools { display:flex; align-items:center; gap:18px; font-size:13px; color:var(--mute); }
+  .toggle { display:inline-flex; align-items:center; gap:9px; color:var(--mute); }
+  .switch { width:34px; height:20px; border-radius:999px; background:var(--track); position:relative; transition:background-color .25s; }
+  .switch::after { content:""; position:absolute; left:3px; top:3px; width:14px; height:14px; border-radius:50%; background:var(--knob); transition:transform .3s var(--ease), background-color .25s; }
+  .on > .switch, .switch.on { background:var(--fg); }
+  .on > .switch::after { transform:translateX(14px); background:var(--bg); }
+  .chips { display:flex; gap:6px; }
+  .chip { padding:3px 12px; border:1px solid var(--track); border-radius:999px; color:var(--mute); font-size:13px; transition:color .15s, background-color .15s, border-color .15s, transform .15s var(--ease); }
+  .chip:hover { color:var(--fg); border-color:var(--faint); }
+  .chip:active { transform:scale(.94); }
+  .chip.on { background:var(--fg); border-color:var(--fg); color:var(--bg); }
+
+  main { position:relative; z-index:1; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 28px; }
+  .hero { min-height:100svh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:104px 0 56px; }
+  h1 { font:600 clamp(64px,13vw,132px)/1 var(--display); letter-spacing:-.035em; animation:rise .9s var(--ease) 1.05s backwards; }
+  .tagline { font:600 clamp(22px,3.6vw,34px)/1.25 var(--display); margin-top:20px; max-width:20em; }
+  .w { display:inline-block; white-space:pre; color:transparent; -webkit-background-clip:text; background-clip:text; background-image:linear-gradient(90deg,var(--fg) calc(var(--w,0%) * 1.22 - 22%),var(--dim) calc(var(--w,0%) * 1.22)); }
+  :root.still .w { background-image:none; color:var(--fg); }
+  @keyframes rise { from { opacity:0; transform:translateY(14px); } }
+  .fade { animation:rise .7s var(--ease) backwards; animation-delay:calc(var(--n) * 90ms + 1.2s); }
+  .lead { color:var(--mute); font-size:18px; margin-top:16px; max-width:34em; }
+  .acts { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:14px 22px; margin-top:32px; }
+  .play { display:inline-block; padding:12px 34px; background:var(--fg); color:var(--bg); font-weight:600; border-radius:999px; text-decoration:none; transition:transform .2s var(--ease), box-shadow .3s; }
+  .play:hover { transform:scale(1.05); box-shadow:0 0 44px rgba(var(--glow),.28); }
+  .play:active { transform:scale(.97); }
+  .quiet { color:var(--mute); text-decoration:none; border-bottom:1px solid var(--faint); transition:color .15s, border-color .15s; }
+  .quiet:hover { color:var(--fg); border-color:var(--fg); }
+  .small { color:var(--mute); font-size:13px; margin-top:14px; }
+
+  .stage { position:relative; width:100%; max-width:900px; margin-top:56px; perspective:1400px; }
+  .stage .halo { position:absolute; inset:-9%; border-radius:50%; background:radial-gradient(closest-side,rgba(var(--glow),.17),transparent); filter:blur(30px); pointer-events:none; animation:halo 3.6s ease-in-out infinite alternate; }
+  @keyframes halo { from { opacity:.45; transform:scale(.97); } to { opacity:1; transform:scale(1.03); } }
+  .shot { position:relative; display:block; width:100%; height:auto; border:1px solid var(--line); background:var(--hover); transform:rotateX(var(--tx,0deg)) rotateY(var(--ty,0deg)); transition:transform .3s ease-out; }
+  .hero .stage { animation:stage-in 1.1s var(--ease) 1.45s backwards; }
+  @keyframes stage-in { from { opacity:0; transform:scale(.82) translateY(50px); } }
+
+  .rv { opacity:0; transform:translateY(22px); transition:opacity .6s var(--ease) var(--d,0ms), transform .7s var(--ease) var(--d,0ms); }
+  .rv.in { opacity:1; transform:none; }
+  .rv.zoom { transform:scale(.84) translateY(40px); }
+  .rv.zoom.in { transform:none; }
+
+  .feature { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,8fr); gap:56px; align-items:center; padding:88px 0; scroll-margin-top:40px; }
+  .feature:nth-of-type(even) { grid-template-columns:minmax(0,8fr) minmax(0,5fr); }
+  .feature:nth-of-type(even) .copy { order:2; }
+  .eyebrow { color:var(--faint); font-size:11px; letter-spacing:.14em; text-transform:uppercase; }
+  h2 { font:600 clamp(32px,4.4vw,44px)/1.1 var(--display); letter-spacing:-.02em; margin-top:10px; }
+  .copy p { color:var(--mute); margin-top:14px; }
+
+  .band { padding:88px 0; border-top:1px solid var(--line); scroll-margin-top:40px; }
+  .nums { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:28px; }
+  .num b { display:block; font:600 clamp(52px,8vw,84px)/1.05 var(--display); font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  .num span { color:var(--mute); font-size:14px; }
+  .more { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 40px; margin-top:28px; list-style:none; }
+  .more li { position:relative; padding:13px 0 13px 0; border-bottom:1px solid var(--line); transition:opacity .6s var(--ease) var(--d,0ms), transform .3s var(--ease), padding-left .3s var(--ease); }
+  .more li::before { content:""; position:absolute; left:0; top:50%; width:2px; height:16px; margin-top:-8px; border-radius:1px; background:var(--fg); opacity:0; transition:opacity .25s; }
+  .more li:hover { padding-left:12px; }
+  .more li:hover::before { opacity:1; }
+  .more b { font-weight:500; }
+  .more span { color:var(--mute); }
+  .keys { margin-top:28px; max-width:620px; }
+  .key { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .key span { color:var(--mute); }
+  kbd { color:var(--mute); font:13px var(--font); padding:3px 10px; border:1px solid var(--track); border-radius:4px; transition:color .15s, background-color .15s, border-color .15s, transform .15s var(--ease); white-space:nowrap; }
+  kbd.hit { color:var(--bg); background:var(--fg); border-color:var(--fg); transform:scale(.92); }
+  .steps { list-style:none; counter-reset:step; margin-top:28px; max-width:680px; }
+  .steps li { display:grid; grid-template-columns:36px minmax(0,1fr); counter-increment:step; padding:13px 0; border-bottom:1px solid var(--line); }
+  .steps li::before { content:counter(step); color:var(--faint); font-variant-numeric:tabular-nums; }
+  .steps + .note { margin-top:20px; }
+  .note { color:var(--mute); max-width:680px; font-size:15px; }
+  .note + .note { margin-top:12px; }
+  .note b { color:var(--fg); font-weight:500; }
+  .cta { text-align:center; padding:112px 0; border-top:1px solid var(--line); }
+  .cta h2 { margin:0 0 28px; }
+  footer { position:relative; z-index:1; color:var(--faint); font-size:13px; padding:0 0 52px; }
+  footer p + p { margin-top:6px; }
+  footer a { color:var(--mute); }
+
+  .side { position:fixed; right:30px; top:50%; z-index:10; transform:translateY(-50%); display:none; flex-direction:column; opacity:0; transition:opacity .4s; }
+  .side.show { opacity:1; }
+  .side a { position:relative; padding:5px 0 5px 14px; color:var(--mute); font-size:13px; text-decoration:none; transition:color .25s, transform .25s var(--ease); }
+  .side a:hover { color:var(--fg); transform:translateX(3px); }
+  .side a.on { color:var(--fg); font-weight:500; }
+  .mark { position:absolute; left:0; top:0; width:2px; height:16px; border-radius:1px; background:var(--fg); transition:transform .4s var(--ease); }
+  @media (min-width:1320px) { .side { display:flex; } }
+
+  .fline { position:fixed; left:0; bottom:0; z-index:30; height:2px; width:0; background:var(--fg); opacity:calc(.7 + .3 * var(--beat,0)); }
+  .fline::after { content:""; position:absolute; inset:0; box-shadow:0 0 16px 2px rgb(var(--glow)); opacity:var(--beat,0); }
+
+  @media (max-width:780px) {
+    .feature, .feature:nth-of-type(even) { grid-template-columns:minmax(0,1fr); gap:28px; padding:60px 0; }
+    .feature:nth-of-type(even) .copy { order:0; }
+    .band { padding:60px 0; }
+    .more { grid-template-columns:minmax(0,1fr); }
+    .nums { gap:14px; }
+    .wrap { padding:0 20px; }
+    .tools .label { display:none; }
+    .tools { gap:12px; }
+    .hero { padding-top:84px; }
+    .stage { margin-top:40px; }
+  }
+</style>
+</head>
+<body>
+<script>
+  // Before the first paint, so nothing flashes in the wrong theme or moves when it shouldn't.
+  (() => {
+    const read = key => { try { return localStorage.getItem(key); } catch (e) { return null; } };
+    const root = document.documentElement;
+    if (read('meloir.theme') === 'light') root.classList.add('light');
+    const motion = read('meloir.motion');
+    if (motion === 'off' || (motion === null && matchMedia('(prefers-reduced-motion: reduce)').matches)) root.classList.add('still');
+  })();
+</script>
+<div class="splash" aria-hidden="true"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="var(--fg)"/><path fill="var(--bg)" d="M26 27h11l13 22 13-22h11v46H63V46L50 68 37 46v27H26z"/></svg></div>
+<div class="cursor" id="cursor" aria-hidden="true"></div>
+
+<header>
+  <a class="brand" href="#top"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="50" fill="var(--fg)"/><path fill="var(--bg)" d="M26 27h11l13 22 13-22h11v46H63V46L50 68 37 46v27H26z"/></svg>Meloir</a>
+  <div class="tools">
+    <button class="toggle" id="motion" role="switch" aria-label="Animations"><span class="label">Animations</span><span class="switch"></span></button>
+    <div class="chips"><button class="chip" data-theme="dark">Dark</button><button class="chip" data-theme="light">White</button></div>
+  </div>
+</header>
+
+<nav class="side" id="side" aria-label="Sections">
+  <i class="mark" id="mark"></i>
+  <a href="#focus">Focus mode</a><a href="#queue">Queue</a><a href="#find">Find</a><a href="#stats">Stats</a><a href="#settings">Settings</a><a href="#more">And more</a><a href="#keys">Keys</a><a href="#install">Install</a><a href="#know">Good to know</a>
+</nav>
+
+<main id="top">
+  <div class="wrap">
+    <section class="hero">
+      <h1>Meloir</h1>
+      <p class="tagline" id="tagline">A pure black interface for Spotify on Windows.</p>
+      <p class="lead fade" style="--n:6">The only colour on screen comes from the covers.</p>
+      <div class="acts fade" style="--n:7">
+        <a class="play" href="https://github.com/pascalnot/Meloir/releases/latest/download/MeloirSetup.exe">Download for Windows</a>
+        <a class="quiet" href="https://github.com/pascalnot/Meloir">Source code</a>
+        <a class="quiet" href="https://pascalnot.github.io/Meloir-Android/">Android version</a>
+      </div>
+      <p class="small fade" style="--n:8">Works on a free account. Needs the Spotify desktop app from spotify.com.</p>
+      <div class="stage" id="heroStage"><div class="halo"></div><img class="shot gif" src="media/tour.gif" width="800" height="450" alt="Meloir starting up, then moving through Home, the title bar menu, Liked Songs and Albums"></div>
+    </section>
+
+    <section class="feature" id="focus">
+      <div class="copy rv"><div class="eyebrow">Focus mode</div><h2 class="sweep">Just the cover and the song.</h2><p>The cover on a black screen with a soft glow from its colours. Lyrics follow the song word by word where timing is available. The cover leans toward the mouse, and the line at the bottom pulses on beats and flashes on drops.</p></div>
+      <div class="stage rv zoom"><div class="halo"></div><img class="shot gif" loading="lazy" src="media/focus.gif" width="800" height="450" alt="Focus mode with the cover leaning toward the mouse"></div>
+    </section>
+
+    <section class="feature" id="queue">
+      <div class="copy rv"><div class="eyebrow">Queue</div><h2 class="sweep">Drag it into place.</h2><p>Slide the queue in with Q and drag songs into a new order. When the next song starts, the list moves up with it.</p></div>
+      <div class="stage rv zoom"><div class="halo"></div><img class="shot gif" loading="lazy" src="media/queue.gif" width="800" height="450" alt="Dragging a song to a new place in the queue"></div>
+    </section>
+
+    <section class="feature" id="find">
+      <div class="copy rv"><div class="eyebrow">Find and organise</div><h2 class="sweep">Find it as you type.</h2><p>Search any playlist or Liked Songs as you type, filter by genre, and right-click a song to queue it, like it, add it to a playlist or start a radio from it.</p></div>
+      <div class="stage rv zoom"><div class="halo"></div><img class="shot gif" loading="lazy" src="media/find.gif" width="800" height="450" alt="Searching Liked Songs, adding a song to a playlist and filtering by genre"></div>
+    </section>
+
+    <section class="feature" id="stats">
+      <div class="copy rv"><div class="eyebrow">Stats</div><h2 class="sweep">Yours, on your PC.</h2><p>See how long you have listened, with your top songs and artists. It all stays on your PC. The recording uses sample numbers.</p></div>
+      <div class="stage rv zoom"><div class="halo"></div><img class="shot gif" loading="lazy" src="media/stats.gif" width="800" height="450" alt="The Stats page with listening time, top songs and top artists, shown with sample numbers"></div>
+    </section>
+
+    <section class="feature" id="settings">
+      <div class="copy rv"><div class="eyebrow">Settings and themes</div><h2 class="sweep">Dark or white.</h2><p>Everything sits in one sorted page, with Dark and White themes. Try them at the top of this page.</p></div>
+      <div class="stage rv zoom"><div class="halo"></div><img class="shot gif" loading="lazy" src="media/settings.gif" width="800" height="450" alt="Scrolling Settings with the sidebar following along, then switching to the white theme"></div>
+    </section>
+
+    <section class="band" id="more">
+      <div class="nums">
+        <div class="num rv"><b data-count="0">0</b><span>of Spotify's files changed</span></div>
+        <div class="num rv" style="--d:90ms"><b data-count="6">0</b><span>equalizer bands</span></div>
+        <div class="num rv" style="--d:180ms"><b data-count="1">0</b><span>click to update</span></div>
+      </div>
+      <ul class="more">
+        <li class="rv"><b>Mix</b> <span>an artist's hits and deep cuts with similar artists</span></li>
+        <li class="rv"><b>Song radio</b> <span>Spotify's radio for any song</span></li>
+        <li class="rv"><b>Albums</b> <span>saved, plus the ones you've liked most</span></li>
+        <li class="rv"><b>Smooth transitions</b> <span>on a free account too</span></li>
+        <li class="rv"><b>Idle screen</b> <span>the cover fills the window</span></li>
+        <li class="rv"><b>Recently played</b> <span>and recent searches</span></li>
+        <li class="rv"><b>Equalizer</b> <span>cursor glow and pause fades</span></li>
+        <li class="rv"><b>Updates</b> <span>installed in one click</span></li>
+      </ul>
+    </section>
+
+    <section class="band" id="keys">
+      <div class="eyebrow rv">Keys</div><h2 class="rv sweep">Press them here.</h2>
+      <div class="keys">
+        <div class="key rv"><span>Focus mode</span><kbd data-key="f">F</kbd></div>
+        <div class="key rv"><span>Lyrics in focus mode</span><kbd data-key="l">L</kbd></div>
+        <div class="key rv"><span>Queue</span><kbd data-key="q">Q</kbd></div>
+        <div class="key rv"><span>Play or pause, with a short fade</span><kbd data-key=" ">Space</kbd></div>
+        <div class="key rv"><span>Search</span><kbd data-key="k" data-ctrl>Ctrl+K</kbd></div>
+        <div class="key rv"><span>Show all shortcuts</span><kbd data-key="?">?</kbd></div>
+      </div>
+    </section>
+
+    <section class="band" id="install">
+      <div class="eyebrow rv">Install</div><h2 class="rv sweep">Three steps.</h2>
+      <ol class="steps">
+        <li class="rv"><span>Install the <a href="https://www.spotify.com/download/windows/">Spotify desktop app</a> from spotify.com. The Microsoft Store version is not supported.</span></li>
+        <li class="rv"><span>Download and run <a href="https://github.com/pascalnot/Meloir/releases/latest/download/MeloirSetup.exe">MeloirSetup.exe</a>. If SmartScreen warns you, choose More info, then Run anyway, because the installer is not code-signed. No admin rights are needed.</span></li>
+        <li class="rv"><span>Open Meloir from the Start menu.</span></li>
+      </ol>
+      <p class="note rv">Meloir restarts Spotify when it opens, so anything playing stops for a moment. To remove it, run the installer again and choose Uninstall. Spotify is not touched.</p>
+    </section>
+
+    <section class="band" id="know">
+      <div class="eyebrow rv">Good to know</div><h2 class="rv sweep">The honest part.</h2>
+      <div style="margin-top:28px">
+        <p class="note rv"><b>Ads and your account.</b> Meloir switches off the app's ad managers and mutes anything that still plays as an ad. It never reports the account as Premium. Blocking ads goes against Spotify's Terms of Use, and Spotify may suspend accounts that do it. Use it at your own risk.</p>
+        <p class="note rv"><b>Lyrics and genres.</b> Word timing comes from LyricsPlus and lrc.red, which receive the song's title, artist and length. The genre menu asks Wikidata and Apple's iTunes catalogue about artists.</p>
+        <p class="note rv"><b>Your data.</b> Recent songs, searches, stats and genres stay on your PC and can be cleared in Settings. When Meloir opens it asks GitHub for the latest release.</p>
+        <p class="note rv"><b>Debug port.</b> While Meloir runs, Spotify's debugging port is open on this PC only, on a random port. Other programs on this PC could reach your Spotify session through it.</p>
+      </div>
+    </section>
+
+    <section class="cta">
+      <h2 class="rv sweep">Nothing but the music.</h2>
+      <a class="play rv" href="https://github.com/pascalnot/Meloir/releases/latest/download/MeloirSetup.exe">Download for Windows</a>
+    </section>
+  </div>
+</main>
+
+<footer><div class="wrap">
+  <p>Not affiliated with or endorsed by Spotify. Spotify is a trademark of Spotify AB. Album art in the recordings belongs to its owners.</p>
+  <p>Ad slot handling adapted from the <a href="https://github.com/rxri/spicetify-extensions">adblock extension</a> by ririxi and CharlieS1103 (MIT). Meloir is released under <a href="https://github.com/pascalnot/Meloir/blob/main/LICENSE">GPL-3.0</a>.</p>
+</div></footer>
+<div class="fline" id="fline" aria-hidden="true"></div>
+
+<script>
+(() => {
+  const SWEEP_MS_PER_CHAR = 34, SWEEP_START_MS = 1250, MAX_TILT = 5, COUNT_MS = 1100, BEAT_MS = 520, BEAT_FADE_MS = 240, REVEAL_STEP_MS = 40, REVEAL_MAX = 8, HIT_MS = 180, THEME_MS = 620;
+  const root = document.documentElement, $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const calm = () => root.classList.contains('still');
+  const write = (key, value) => { try { localStorage.setItem(key, value); } catch (e) { /* not kept */ } };
+
+  // A heading lights word by word, the way a sung line does in focus mode.
+  const split = el => {
+    const words = el.textContent.split(/(?<=\s)/).filter(Boolean);
+    el.setAttribute('aria-label', el.textContent);
+    el.replaceChildren(...words.map(word => { const s = document.createElement('span'); s.className = 'w'; s.setAttribute('aria-hidden', 'true'); s.textContent = word; return s; }));
+  };
+  const sweep = (el, delay = 0) => {
+    if (el.dataset.swept) return;
+    el.dataset.swept = '1';
+    let at = delay;
+    for (const word of el.children) {
+      const ms = word.textContent.length * SWEEP_MS_PER_CHAR, from = at;
+      at += ms;
+      const started = performance.now();
+      const step = now => {
+        const done = Math.max(0, Math.min(1, (now - started - from) / ms));
+        word.style.setProperty('--w', done * 100 + '%');
+        if (done < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+  };
+  $$('.sweep, #tagline').forEach(split);
+  sweep($('#tagline'), SWEEP_START_MS);
+
+  const countUp = el => {
+    const target = +el.dataset.count;
+    if (calm() || !target) { el.textContent = target; return; }
+    const started = performance.now();
+    const step = now => {
+      const p = Math.min(1, (now - started) / COUNT_MS), eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(target * eased);
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+
+  // Things rise in crossing the bottom edge going down, and sink back crossing it going up.
+  const reveal = new IntersectionObserver(entries => {
+    let order = 0;
+    for (const e of entries) {
+      const el = e.target, below = !e.isIntersecting && e.boundingClientRect.top > e.rootBounds.height / 2;
+      if (e.isIntersecting) {
+        if (!el.style.getPropertyValue('--d')) el.style.setProperty('--d', Math.min(order++, REVEAL_MAX) * REVEAL_STEP_MS + 'ms');
+        el.classList.add('in');
+        const heading = el.matches('.sweep') ? el : el.querySelector('.sweep');
+        if (heading) sweep(heading, 180);
+        const number = el.querySelector('[data-count]');
+        if (number && !number.dataset.done) { number.dataset.done = '1'; countUp(number); }
+      } else if (below) el.classList.remove('in');
+    }
+  }, { threshold: .18 });
+  $$('.rv').forEach(el => reveal.observe(el));
+
+  // The side list follows the page, with its marker gliding to the section you are in.
+  const side = $('#side'), mark = $('#mark'), links = $$('#side a'), sections = links.map(a => $(a.getAttribute('href')));
+  const line = $('#fline');
+  const onScroll = () => {
+    const max = root.scrollHeight - innerHeight;
+    line.style.width = (max > 0 ? scrollY / max * 100 : 0) + '%';
+    let index = -1;
+    sections.forEach((s, i) => { if (s.getBoundingClientRect().top <= innerHeight * .45) index = i; });
+    side.classList.toggle('show', index >= 0);
+    links.forEach((a, i) => a.classList.toggle('on', i === index));
+    if (index >= 0) mark.style.transform = `translateY(${links[index].offsetTop + (links[index].offsetHeight - 16) / 2}px)`;
+  };
+  addEventListener('scroll', onScroll, { passive: true });
+  addEventListener('resize', onScroll, { passive: true });
+  onScroll();
+
+  // The line at the bottom pulses like the one in focus mode.
+  let beat = 0, last = performance.now(), nextBeat = last + BEAT_MS;
+  const pulse = now => {
+    requestAnimationFrame(pulse);
+    if (calm()) { line.style.setProperty('--beat', 0); return; }
+    beat *= Math.exp(-(now - last) / BEAT_FADE_MS);
+    last = now;
+    if (now >= nextBeat) { nextBeat = now + BEAT_MS; beat = 1; }
+    line.style.setProperty('--beat', beat.toFixed(2));
+  };
+  requestAnimationFrame(pulse);
+
+  // A soft light under the pointer, and the pictures lean toward it.
+  const cursor = $('#cursor');
+  const stages = $$('.stage');
+  const onPointer = (x, y) => {
+    if (calm()) return;
+    cursor.style.transform = `translate(${x}px,${y}px)`;
+    cursor.classList.add('on');
+    for (const stage of stages) {
+      const box = stage.getBoundingClientRect();
+      if (box.bottom < 0 || box.top > innerHeight) continue;
+      const across = Math.max(-1, Math.min(1, (x - (box.left + box.width / 2)) / (innerWidth / 2)));
+      const down = Math.max(-1, Math.min(1, (y - (box.top + box.height / 2)) / (innerHeight / 2)));
+      const shot = stage.querySelector('.shot');
+      shot.style.setProperty('--ty', (across * MAX_TILT).toFixed(2) + 'deg');
+      shot.style.setProperty('--tx', (-down * MAX_TILT).toFixed(2) + 'deg');
+    }
+  };
+  addEventListener('pointermove', e => { if (e.pointerType === 'mouse') onPointer(e.clientX, e.clientY); }, { passive: true });
+  document.addEventListener('mouseleave', () => cursor.classList.remove('on'));
+
+  // With animations off, the recordings show their first frame.
+  const freeze = img => {
+    if (!img.naturalWidth || img.dataset.gif) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    try { const still = canvas.toDataURL('image/png'); img.dataset.gif = img.src; img.src = still; } catch (e) { /* left playing */ }
+  };
+  const thaw = img => { if (img.dataset.gif) { img.src = img.dataset.gif; delete img.dataset.gif; } };
+  const applyGifs = () => $$('.gif').forEach(img => {
+    if (!calm()) { thaw(img); return; }
+    if (img.complete) freeze(img);
+    else img.addEventListener('load', () => { if (calm()) freeze(img); }, { once: true });
+  });
+
+  const motion = $('#motion');
+  const showMotion = () => { motion.classList.toggle('on', !calm()); motion.setAttribute('aria-checked', String(!calm())); };
+  motion.onclick = () => {
+    const off = !calm();
+    root.classList.toggle('still', off);
+    write('meloir.motion', off ? 'off' : 'on');
+    if (off) { cursor.classList.remove('on'); $$('.shot').forEach(s => { s.style.removeProperty('--tx'); s.style.removeProperty('--ty'); }); }
+    showMotion();
+    applyGifs();
+  };
+  showMotion();
+  applyGifs();
+
+  const chips = $$('.chip');
+  const showTheme = () => chips.forEach(c => c.classList.toggle('on', (c.dataset.theme === 'light') === root.classList.contains('light')));
+  showTheme();
+  chips.forEach(chip => chip.onclick = event => {
+    const light = chip.dataset.theme === 'light';
+    if (light === root.classList.contains('light')) return;
+    const change = () => { root.classList.toggle('light', light); showTheme(); write('meloir.theme', chip.dataset.theme); };
+    if (calm() || !document.startViewTransition) { change(); return; }
+    // The new theme opens out from the button that was pressed.
+    const x = event.clientX, y = event.clientY, radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.startViewTransition(change).ready.then(() => {
+      root.animate({ clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] }, { duration: THEME_MS, easing: 'cubic-bezier(.2,.8,.2,1)', pseudoElement: '::view-transition-new(root)' });
+    });
+  });
+
+  const hit = el => { el.classList.add('hit'); setTimeout(() => el.classList.remove('hit'), HIT_MS); };
+  addEventListener('keydown', e => {
+    if (e.repeat || e.altKey || e.metaKey) return;
+    const key = e.key.toLowerCase();
+    const found = $$('kbd').find(k => k.dataset.key === key && ('ctrl' in k.dataset) === e.ctrlKey);
+    if (found) hit(found);
+  });
+})();
+</script>
+</body>
+</html>

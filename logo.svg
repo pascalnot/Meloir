@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Meloir">
+  <circle cx="50" cy="50" r="50" fill="#fff"/>
+  <path fill="#000" d="M26 27h11l13 22 13-22h11v46H63V46L50 68 37 46v27H26z"/>
+</svg>
