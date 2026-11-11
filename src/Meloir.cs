@@ -19,7 +19,7 @@ using System.Web.Script.Serialization;
 
 [assembly: AssemblyTitle("Meloir")]
 [assembly: AssemblyProduct("Meloir")]
-[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
 
 // One DevTools connection to the page.
 class Cdp
@@ -324,7 +324,7 @@ static class WindowControls
 // and only if the download matches the checksum GitHub gives for it.
 static class Updater
 {
-    public const string Release = "v1.3.0";
+    public const string Release = "v1.4.0";
     const string Feed = "https://api.github.com/repos/pascalnot/Meloir/releases/latest";
     const string Downloads = "https://github.com/pascalnot/Meloir/releases/download/";
     const string AssetName = "MeloirSetup.exe", DigestPrefix = "sha256:";

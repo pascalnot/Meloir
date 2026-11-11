@@ -13,11 +13,11 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Meloir Setup")]
 [assembly: AssemblyProduct("Meloir")]
-[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
 
 static class Installer
 {
-    public const string Version = "1.3.0";
+    public const string Version = "1.4.0";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Meloir";
 
     static readonly string[] AppFiles = { "Meloir.exe", "Uninstall.exe" };
