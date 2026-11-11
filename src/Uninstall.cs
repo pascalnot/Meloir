@@ -32,8 +32,14 @@ static class Program
             if (File.Exists(link)) File.Delete(link);
         Registry.CurrentUser.DeleteSubKeyTree(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Meloir", false);
         string data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Meloir");
-        string prefs = Path.Combine(data, "prefs.json"), updates = Path.Combine(data, "update");
-        if (File.Exists(prefs)) File.Delete(prefs);
+        string updates = Path.Combine(data, "update");
+        // The settings with their backup and leftovers, and the error log: only Meloir's own files.
+        if (Directory.Exists(data))
+            foreach (string file in Directory.GetFiles(data))
+            {
+                string name = Path.GetFileName(file);
+                if (name.StartsWith("prefs.json", StringComparison.OrdinalIgnoreCase) || name == "errors.log") File.Delete(file);
+            }
         if (Directory.Exists(updates)) Directory.Delete(updates, true);
         if (Directory.Exists(data) && Directory.GetFileSystemEntries(data).Length == 0) Directory.Delete(data);
 

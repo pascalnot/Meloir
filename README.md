@@ -166,7 +166,7 @@ Run `build.ps1`. It uses the C# compiler that ships with Windows and writes `dis
 The ad slot handling is adapted from the [adblock extension](https://github.com/rxri/spicetify-extensions)
 by ririxi and CharlieS1103 (MIT). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Meloir is released under [GPL-3.0](LICENSE).
+Meloir is released under [GPL-3.0](LICENSE). See the [privacy policy](https://pascalnot.github.io/Meloir/privacy.html) for what it stores and sends.
 
 Not affiliated with or endorsed by Spotify. Spotify is a trademark of Spotify AB. Album art in the
 pictures above belongs to its owners.
