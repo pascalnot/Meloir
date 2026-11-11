@@ -74,6 +74,9 @@ Everything sits in one sorted page, with Dark and White themes.
 - **Recently played and recent searches**
 - **Smooth transitions:** each song fades into the next, on a free account too
 - **Idle screen:** the cover fills the window when you step away
+- **Cover backdrop:** an optional soft, blurred copy of the cover behind everything
+- **Song menu:** add to a playlist, go to the album or artist, copy the song's link, or remove it from Liked Songs or your own playlists, also from the cover in the player bar
+- **Discord status:** optionally shows the song you're playing on your Discord profile
 - **Equalizer, cursor glow and pause fades**
 - **Ad handling:** see [Good to know](#good-to-know)
 - **Updates:** Meloir tells you when a new version is out and installs it in one click
@@ -121,8 +124,8 @@ too. Crossfade and AutoMix did not overlap songs on a free account in testing. S
 Meloir's own: each song fades out, its last 1.5 seconds are skipped, and the next song fades in, so the
 two never play at once. They can be turned off in Settings.
 
-**Lyrics.** Word timing comes from [LyricsPlus](https://lyricsplus.binimum.org) and
-[lrc.red](https://lrc.red), which receive the song's title, artist and length. It isn't available for
+**Lyrics.** Word timing comes from [LyricsPlus](https://lyricsplus.binimum.org),
+[lrc.red](https://lrc.red) and [LRCLIB](https://lrclib.net), which receive the song's title, artist and length. It isn't available for
 every song, and those songs use Spotify's line timing instead.
 
 **Glow.** The beat and drop glow follow Spotify's analysis of each song, not the sound itself, so a
