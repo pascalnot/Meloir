@@ -12,7 +12,8 @@
   const RECENT_ON_HOME = 6, MAX_HISTORY = 30, MAX_SEARCHES = 8, KEEP_SEARCH_MS = 1500;
   const GLOW_TIGHT_GROW = 2, GLOW_WIDE_GROW = 14, GLOW_TIGHT_SOFT_PX = 12, GLOW_WIDE_SOFT_PX = 90;
   const BACKDROP_MAX_OPACITY = 0.6, ROW_LEAVE_MS = 280, MUTE_FADE_MS = 140, UNMUTE_FADE_MS = 350, HIDDEN_BUTTONS_HEIGHT = 1, FULLSCREEN_SETTLE_MS = 350, NAV_MARK_PX = 16, TOAST_MS = 2600, DRAG_START_PX = 5, DRAG_EDGE_PX = 36, DRAG_SCROLL_PX = 8, DRAG_CLICK_MS = 100, QUEUE_SETTLE_MS = 900, GENRE_FOCUS_MS = 60;
-  const PLAY_COUNTS_MS = 30000, SAVE_LISTENING_MS = 60000, MAX_STATS_SONGS = 400, STATS_TOP = 10, STATS_COUNT_MS = 900;
+  const PLAY_COUNTS_MS = 30000, SAVE_LISTENING_MS = 60000, MAX_STATS_SONGS = 400, STATS_TOP = 10, STATS_COUNT_MS = 900, STATS_KEEP_DAYS = 400, NEWS_DELAY_MS = 1600;
+  const STATS_RANGES = [['week', '7 days', 7], ['month', '30 days', 30], ['all', 'All time', 0]];
   const SHORTCUTS = [['Space', 'Play or pause'], ['F', 'Focus mode'], ['L', 'Lyrics in focus mode'], ['Q', 'Queue'], ['Ctrl+K', 'Search'],
     ['Ctrl+F', 'Filter songs'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
   const FILTERED_LIST_URI = 'spotify:internal:meloir', MELOIR_LINK = 'https://github.com/pascalnot/Meloir', DISCORD_MAX_TEXT = 128, DISCORD_SEEK_MS = 3000, SETTINGS_JUMP_MS = 900, SETTINGS_TOP_PX = 12, SETTINGS_ROW_PX = 26, SETTINGS_GLIDE_MS = 70, SETTINGS_REACHED_PX = 2;
@@ -158,6 +159,18 @@
     .keylist h2 { margin: 0 0 12px; }
     .keyrow { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
     #keys.on .keyrow { animation: set-in .4s var(--ease) backwards; animation-delay: calc(var(--n) * 30ms + 60ms); }
+    #news { position: absolute; inset: 0; z-index: 21; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 90%, transparent);
+      opacity: 0; visibility: hidden; transition: opacity .3s, visibility .3s; }
+    #news.on { opacity: 1; visibility: visible; }
+    .newslist { width: min(520px, 84vw); max-height: 80vh; overflow: auto; }
+    .newslist h1 { font-size: 34px; }
+    .newslist .note { margin: 6px 0 4px; }
+    .newslist h2 { margin: 22px 0 6px; }
+    .newsrow { padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--mute); }
+    .newsrow b { color: var(--fg); font-weight: 500; }
+    .newslist .play { margin-top: 24px; }
+    #news.on .newslist > * { animation: set-in .45s var(--ease) backwards; animation-delay: calc(var(--n) * 35ms + 80ms); }
+    .ranges { margin-top: 14px; }
     kbd { color: var(--mute); font: 12px "Segoe UI", system-ui, sans-serif; padding: 2px 8px; border: 1px solid var(--track); border-radius: 4px; }
 
     .genrewrap { position: relative; margin-top: 18px; }
@@ -1089,9 +1102,39 @@
     });
 
     // Stats count a song once it has played for a while, and keep the most played ones.
-    const openStats = () => show('stats', () => {
+    const statsCutoff = days => dayKey(new Date(Date.now() - (days - 1) * 86400000));
+    // A week or a month adds up its days. Songs and artists use what all time knows about them.
+    const statsFor = range => {
       const { stats } = meloir.prefs;
-      if (!stats.plays) return [h('h1', {}, 'Stats'), h('p', { className: 'note' }, 'Nothing yet. Songs count here after 30 seconds of listening.')];
+      const span = (STATS_RANGES.find(r => r[0] === range) || STATS_RANGES[2])[2];
+      if (!span) return { ms: stats.ms, plays: stats.plays, tracks: Object.values(stats.tracks), artists: Object.entries(stats.artists).map(([name, a]) => ({ name, ...a })) };
+      const from = statsCutoff(span), days = Object.entries(stats.days || {}).filter(([key]) => key >= from).map(([, d]) => d);
+      const songs = {}, people = {};
+      let ms = 0, plays = 0;
+      for (const d of days) {
+        ms += d.ms; plays += d.plays;
+        for (const [uri, n] of Object.entries(d.tracks)) songs[uri] = (songs[uri] || 0) + n;
+        for (const [name, n] of Object.entries(d.artists)) people[name] = (people[name] || 0) + n;
+      }
+      const firstDay = Object.keys(stats.days || {}).sort()[0];
+      return {
+        ms, plays, partial: !firstDay || firstDay > from, firstDay,
+        tracks: Object.entries(songs).filter(([uri]) => stats.tracks[uri]).map(([uri, n]) => ({ ...stats.tracks[uri], n })),
+        artists: Object.entries(people).map(([name, n]) => ({ name, n, uri: (stats.artists[name] || {}).uri })),
+      };
+    };
+    const openStats = () => show('stats', () => {
+      const all = meloir.prefs.stats;
+      if (!all.plays) return [h('h1', {}, 'Stats'), h('p', { className: 'note' }, 'Nothing yet. Songs count here after 30 seconds of listening.')];
+      const range = meloir.prefs.statsRange;
+      const stats = statsFor(range);
+      const ranges = h('div', { className: 'chips ranges' }, STATS_RANGES.map(([key, label]) => h('button', { className: 'chip' + (key === range ? ' on' : ''),
+        onclick: () => { if (key === range) return; meloir.setPref('statsRange', key); openStats(); } }, label)));
+      const long = date => date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+      const since = range === 'all' ? 'Since ' + long(new Date(all.since))
+        : stats.partial ? 'Counting days since ' + (stats.firstDay ? long(new Date(stats.firstDay + 'T00:00')) : 'today')
+          : 'The last ' + (STATS_RANGES.find(r => r[0] === range) || [])[2] + ' days';
+      if (!stats.plays) return [h('h1', {}, 'Stats'), ranges, h('p', { className: 'note' }, since + '. Nothing played in this time yet.')];
       const minutes = Math.round(stats.ms / 60000);
       // Up to a day it reads in hours and minutes, beyond that in days and hours.
       const listened = value => {
@@ -1099,8 +1142,8 @@
         if (days) return days + (days === 1 ? ' day ' : ' days ') + hours + ' h';
         return (hours ? hours + ' h ' : '') + (value % 60) + ' min';
       };
-      const tracks = Object.values(stats.tracks).sort((a, b) => b.n - a.n).slice(0, STATS_TOP);
-      const artists = Object.entries(stats.artists).map(([name, artist]) => ({ name, ...artist })).sort((a, b) => b.n - a.n);
+      const tracks = stats.tracks.sort((a, b) => b.n - a.n).slice(0, STATS_TOP);
+      const artists = stats.artists.sort((a, b) => b.n - a.n);
       const number = (value, label, format = String) => {
         const shown = h('b', {}, format(calm() ? value : 0));
         if (!calm()) {
@@ -1114,8 +1157,8 @@
         }
         return h('div', { className: 'num' }, shown, h('span', {}, label));
       };
-      return [h('h1', {}, 'Stats'),
-        h('p', { className: 'note' }, 'Since ' + new Date(stats.since).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })),
+      return [h('h1', {}, 'Stats'), ranges,
+        h('p', { className: 'note' }, since),
         h('div', { className: 'nums' }, number(minutes, 'Listened', listened), number(stats.plays, 'Plays'), number(artists.length, 'Artists')),
         h('h2', {}, 'Top songs'), ...tracks.map((t, n) => {
           const el = row(t, n);
@@ -1375,7 +1418,7 @@
         setting('Recent songs, searches and stats', 'Kept on this PC only.', h('button', { className: 'chip', onclick: event => {
           meloir.setPref('history', []);
           meloir.setPref('searches', []);
-          meloir.setPref('stats', { since: 0, ms: 0, plays: 0, tracks: {}, artists: {} });
+          meloir.setPref('stats', { since: 0, ms: 0, plays: 0, tracks: {}, artists: {}, days: {} });
           meloir.setPref('genres', {});
           event.currentTarget.textContent = 'Cleared';
         } }, 'Clear')),
@@ -1516,7 +1559,7 @@
       View: [['Focus mode', () => setFocus(true)], ['Queue', () => toggleQueue()], ['Spotify\'s interface', () => toggleSpotify()]],
       Playback: [['Play or pause', () => toggle()], ['Next', () => meloir.next()], ['Previous', () => meloir.services.player.skipToPrevious()],
         ['Shuffle', () => shuffle.click()], ['Repeat', () => repeat.click()], [+volume.value ? 'Mute' : 'Unmute', () => toggleMute()]],
-      Help: [['Keyboard shortcuts', () => toggleKeys()], ['Spotify\'s menu', () => host('menu')]],
+      Help: [['Keyboard shortcuts', () => toggleKeys()], ['What\'s new', () => showNews()], ['Spotify\'s menu', () => host('menu')]],
     });
     let titleAnchor = null;
     const showTitleMenu = (button, name) => {
@@ -2106,6 +2149,45 @@
         h('div', { className: 'keyrow', style: '--n: ' + n }, h('span', {}, about), h('kbd', {}, keys)))));
     const toggleKeys = () => keysPanel.classList.toggle('on');
 
+    // What changed in this version, from the changelog that ships inside Meloir. It shows once after an
+    // update, and stays in the Help menu.
+    const thisVersion = String(window.meloirVersion || '').replace(/^v/, '');
+    const changesIn = version => {
+      const text = String(window.meloirChangelog || '').replace(/\r\n/g, '\n');
+      const start = text.indexOf('\n## ' + version + '\n');
+      if (start < 0) return null;
+      const rest = text.slice(start + 4 + version.length);
+      const end = rest.search(/\n## /);
+      return end < 0 ? rest : rest.slice(0, end);
+    };
+    const changeText = text => {
+      const parts = [];
+      text.split(/(\*\*[^*]+\*\*|`[^`]+`)/).forEach(part => {
+        if (/^\*\*/.test(part)) parts.push(h('b', {}, part.slice(2, -2)));
+        else if (/^`/.test(part)) parts.push(h('code', {}, part.slice(1, -1)));
+        else if (part) parts.push(part);
+      });
+      return parts;
+    };
+    const newsList = h('div', { className: 'newslist', onclick: event => event.stopPropagation() });
+    const newsPanel = h('div', { id: 'news', onclick: () => closeNews() }, newsList);
+    const closeNews = () => newsPanel.classList.remove('on');
+    const showNews = (version = thisVersion) => {
+      const section = changesIn(version);
+      if (!section) return false;
+      let n = 0;
+      const items = [h('h1', { style: '--n: ' + n++ }, 'What\'s new in ' + version)];
+      for (const line of section.split('\n').map(l => l.trim()).filter(Boolean)) {
+        if (/^### /.test(line)) items.push(h('h2', { style: '--n: ' + n++ }, line.slice(4)));
+        else if (/^- /.test(line)) items.push(h('div', { className: 'newsrow', style: '--n: ' + n++ }, changeText(line.slice(2))));
+        else if (/^\*.*\*$/.test(line)) items.push(h('p', { className: 'note', style: '--n: ' + n++ }, line.slice(1, -1)));
+      }
+      items.push(h('button', { className: 'play', style: '--n: ' + n, onclick: () => closeNews() }, 'Got it'));
+      newsList.replaceChildren(...items);
+      newsPanel.classList.add('on');
+      return true;
+    };
+
     const cursorGlow = h('div', { className: 'cursor' });
     const backdropLayers = [h('i'), h('i')];
     const backdrop = h('div', { className: 'backdrop' }, backdropLayers);
@@ -2123,7 +2205,7 @@
       };
       image.src = url;
     };
-    const app = h('div', { id: 'app', className: window.meloirNative ? 'native' : '' }, backdrop, cursorGlow, titlebar, nav, main, footer, full, focus, queuePanel, grips, keysPanel, menu, toast);
+    const app = h('div', { id: 'app', className: window.meloirNative ? 'native' : '' }, backdrop, cursorGlow, titlebar, nav, main, footer, full, focus, queuePanel, grips, keysPanel, newsPanel, menu, toast);
     const rootEl = h('div', { id: 'meloir-root' });
     const shadow = rootEl.attachShadow({ mode: 'open' });
     const sheet = new CSSStyleSheet();
@@ -2227,10 +2309,23 @@
     };
     // Time is counted as it plays, so a skipped song counts for nothing.
     let lastTick = performance.now(), heardUri = null, songHeard = 0, unsaved = 0, counted = false;
+    // Each day keeps its own time, plays and counts, so Stats can show a week or a month.
+    const dayKey = date => date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+    const today = stats => {
+      stats.days = stats.days || {};
+      const key = dayKey(new Date());
+      if (!stats.days[key]) {
+        stats.days[key] = { ms: 0, plays: 0, tracks: {}, artists: {} };
+        const keep = Object.keys(stats.days).sort().slice(-STATS_KEEP_DAYS);
+        stats.days = Object.fromEntries(keep.map(k => [k, stats.days[k]]));
+      }
+      return stats.days[key];
+    };
     const saveListening = () => {
       const { stats } = meloir.prefs;
       stats.since = stats.since || Date.now();
       stats.ms += unsaved;
+      today(stats).ms += unsaved;
       unsaved = 0;
       meloir.setPref('stats', stats);
     };
@@ -2243,7 +2338,13 @@
         artists: (item.artists || []).map(artist => ({ name: artist.name, uri: artist.uri })) };
       stats.plays++;
       for (const artist of item.artists || []) stats.artists[artist.name] = { n: ((stats.artists[artist.name] || {}).n || 0) + 1, uri: artist.uri };
-      const kept = Object.values(stats.tracks).sort((a, b) => b.n - a.n).slice(0, MAX_STATS_SONGS);
+      const day = today(stats);
+      day.plays++;
+      day.tracks[item.uri] = (day.tracks[item.uri] || 0) + 1;
+      for (const artist of item.artists || []) day.artists[artist.name] = (day.artists[artist.name] || 0) + 1;
+      // The most played songs are kept, and every song from the last month, so a week or a month can show them.
+      const recent = new Set(Object.entries(stats.days).filter(([key]) => key >= statsCutoff(30)).flatMap(([, d]) => Object.keys(d.tracks)));
+      const kept = Object.values(stats.tracks).sort((a, b) => b.n - a.n).filter((track, i) => i < MAX_STATS_SONGS || recent.has(track.uri));
       stats.tracks = Object.fromEntries(kept.map(track => [track.uri, track]));
       saveListening();
     };
@@ -2369,6 +2470,7 @@
       if (e.code === 'KeyQ' && !typing && !focusOn && !e.ctrlKey && !e.altKey) { toggleQueue(); e.preventDefault(); }
       if (e.code === 'Escape') {
         setTitleMenu(false);
+        closeNews();
         full.classList.remove('on');
         setFocus(false);
         if (queueOpen) toggleQueue();
@@ -2423,6 +2525,11 @@
       if (meloir.prefs.focusOnOpen) setFocus(true);
     };
     startUp();
+    if (thisVersion && meloir.prefs.seenVersion !== thisVersion) {
+      const updated = !!meloir.prefs.seenVersion;
+      meloir.setPref('seenVersion', thisVersion);
+      if (updated) setTimeout(() => showNews(), NEWS_DELAY_MS);
+    }
     window.__meloirUi = { app, shadow, setFocus, showLyrics, toggleQueue, resyncLyrics: () => { lyricsFor = null; syncLyrics(); } };
   };
 

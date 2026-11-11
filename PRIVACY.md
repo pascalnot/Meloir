@@ -11,7 +11,8 @@ These are kept in `%LOCALAPPDATA%\Meloir`:
 
 - **Settings:** your choices in Settings, such as the theme or the equalizer, in `prefs.json`, with a backup copy next to it.
 - **History:** the last 30 songs you played and your recent searches.
-- **Stats:** how long you listened, and your most played songs and artists.
+- **Stats:** how long you listened, and your most played songs and artists, in total and per day for up to 400 days.
+- **Last version seen:** so Meloir knows when to show what's new after an update.
 - **Genres:** the genre found for each artist, so it is only looked up once.
 - **Error log:** a short record of problems with saving settings, in `errors.log`.
 - **Updates:** a downloaded update, in the `update` folder, until it is installed.

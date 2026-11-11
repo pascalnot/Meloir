@@ -651,6 +651,8 @@ static class Program
     {
         StringBuilder source = new StringBuilder("window.meloirNative = true;\nwindow.meloirVersion = '" + Updater.Release + "';\nwindow.meloirSavedPrefs = " + LoadPrefs() + ";\n");
         Assembly assembly = Assembly.GetExecutingAssembly();
+        using (StreamReader reader = new StreamReader(assembly.GetManifestResourceStream("CHANGELOG.md"), Encoding.UTF8))
+            source.Append("window.meloirChangelog = ").Append(new JavaScriptSerializer().Serialize(reader.ReadToEnd())).Append(";\n");
         foreach (string name in Scripts)
             using (StreamReader reader = new StreamReader(assembly.GetManifestResourceStream(name), Encoding.UTF8))
                 source.Append(reader.ReadToEnd()).Append('\n');
