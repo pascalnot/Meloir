@@ -40,7 +40,7 @@ New-Item -ItemType Directory -Force $stage | Out-Null
 
 $scripts = 'bridge.js', 'audio.js', 'data.js', 'ui.js' | ForEach-Object { "/resource:app\$_,$_" }
 & $csc /nologo /target:winexe /optimize+ /platform:anycpu "/out:$stage\Meloir.exe" '/win32icon:assets\meloir.ico' `
-    /reference:System.Web.Extensions.dll @scripts 'src\Meloir.cs'
+    /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll @scripts 'src\Meloir.cs'
 if ($LASTEXITCODE) { throw 'Meloir.exe did not build.' }
 
 & $csc /nologo /target:winexe /optimize+ /platform:anycpu "/out:$stage\Uninstall.exe" '/win32icon:assets\meloir.ico' 'src\Uninstall.cs'

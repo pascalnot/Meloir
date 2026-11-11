@@ -292,7 +292,7 @@
       });
       return {
         ...toPlaylist({ ...p, uri }), total: p.content.totalCount,
-        tracks: p.content.items.map(i => unwrap(i.itemV2)).filter(known).map(d => toTrack(d)),
+        tracks: p.content.items.filter(i => known(unwrap(i.itemV2))).map(i => ({ ...toTrack(unwrap(i.itemV2)), uid: i.uid })),
       };
     },
 

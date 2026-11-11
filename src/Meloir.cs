@@ -570,6 +570,18 @@ static class Program
 
     // Settings live in a file of their own. The page's storage reaches the disk late, and Spotify
     // is often force closed, which loses whatever was changed last.
+    // The page can't always reach the clipboard inside Spotify, so Meloir.exe puts the text there.
+    static void CopyText(string text)
+    {
+        Thread copier = new Thread(() =>
+        {
+            try { System.Windows.Forms.Clipboard.SetText(text); }
+            catch (Exception e) { Log("Could not copy", e); }
+        });
+        copier.SetApartmentState(ApartmentState.STA);
+        copier.Start();
+    }
+
     static string PrefsPath()
     {
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Meloir\prefs.json");
@@ -726,6 +738,7 @@ static class Program
             else if (message.StartsWith("update:")) Updater.Handle(message);
             else if (message.StartsWith("discord:")) DiscordStatus.Handle(message.Substring(8));
             else if (WindowControls.Handles(message)) WindowControls.Handle(message);
+            else if (message.StartsWith("copy:")) CopyText(message.Substring(5));
         };
         Updater.Page = cdp;
         WindowControls.Page = cdp;

@@ -11,7 +11,7 @@
   const SPLASH_LIMIT_MS = 15000;
   const RECENT_ON_HOME = 6, MAX_HISTORY = 30, MAX_SEARCHES = 8, KEEP_SEARCH_MS = 1500;
   const GLOW_TIGHT_GROW = 2, GLOW_WIDE_GROW = 14, GLOW_TIGHT_SOFT_PX = 12, GLOW_WIDE_SOFT_PX = 90;
-  const BACKDROP_MAX_OPACITY = 0.6, MUTE_FADE_MS = 140, UNMUTE_FADE_MS = 350, HIDDEN_BUTTONS_HEIGHT = 1, FULLSCREEN_SETTLE_MS = 350, NAV_MARK_PX = 16, TOAST_MS = 2600, DRAG_START_PX = 5, DRAG_EDGE_PX = 36, DRAG_SCROLL_PX = 8, DRAG_CLICK_MS = 100, QUEUE_SETTLE_MS = 900, GENRE_FOCUS_MS = 60;
+  const BACKDROP_MAX_OPACITY = 0.6, ROW_LEAVE_MS = 280, MUTE_FADE_MS = 140, UNMUTE_FADE_MS = 350, HIDDEN_BUTTONS_HEIGHT = 1, FULLSCREEN_SETTLE_MS = 350, NAV_MARK_PX = 16, TOAST_MS = 2600, DRAG_START_PX = 5, DRAG_EDGE_PX = 36, DRAG_SCROLL_PX = 8, DRAG_CLICK_MS = 100, QUEUE_SETTLE_MS = 900, GENRE_FOCUS_MS = 60;
   const PLAY_COUNTS_MS = 30000, SAVE_LISTENING_MS = 60000, MAX_STATS_SONGS = 400, STATS_TOP = 10, STATS_COUNT_MS = 900;
   const SHORTCUTS = [['Space', 'Play or pause'], ['F', 'Focus mode'], ['L', 'Lyrics in focus mode'], ['Q', 'Queue'], ['Ctrl+K', 'Search'],
     ['Ctrl+F', 'Filter songs'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
@@ -196,7 +196,8 @@
     .bar span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     /* An artist's bar fills once it scrolls into view, a moment after its row arrives, and empties
        again the same way when it goes back below the edge. */
-    .bar i { display: block; height: 3px; background: var(--fg); transform-origin: left; transform: scaleX(0);
+    /* A border keeps the same whole number of screen pixels on every row, where a height can round either way. */
+    .bar i { display: block; height: 0; border-top: calc(2px / var(--zoom, 1)) solid var(--fg); transform-origin: left; transform: scaleX(0);
       transition: transform .7s var(--ease) calc(var(--d, 0ms) * 3 + 150ms); }
     .bar.filled i { transform: none; }
     .bar.below i { transition-delay: 0ms; }
@@ -711,20 +712,56 @@
       showMenu(event, [['New playlist', () => newPlaylist(event, track)], ...lists.map(list => [list.name, () => addToPlaylist(list.uri, list.name, track)])]);
     };
 
-    const trackMenu = async (event, track, extra = []) => {
+    // A removed song leaves its list at once. If Spotify refuses, it comes back.
+    const fadeAway = (el, undo) => {
+      if (!el) return () => {};
+      const parent = el.parentNode, next = el.nextSibling;
+      const gone = () => el.remove();
+      if (calm()) gone();
+      else el.animate([{ opacity: 1, height: el.offsetHeight + 'px' }, { opacity: 0, height: '0px', paddingTop: '0px', paddingBottom: '0px' }],
+        { duration: ROW_LEAVE_MS, easing: EASE }).finished.then(gone, gone);
+      return () => {
+        if (parent && !el.isConnected) parent.insertBefore(el, next && next.isConnected ? next : null);
+        showToast(undo);
+      };
+    };
+    const copyLink = uri => {
+      const parts = String(uri).split(':');
+      const link = 'https://open.spotify.com/' + parts[1] + '/' + parts[2];
+      if (window.meloirNative) {
+        host('copy:' + link);
+        showToast('Link copied');
+        return;
+      }
+      navigator.clipboard.writeText(link).then(() => showToast('Link copied'), () => showToast('Could not copy the link'));
+    };
+    const editablePlaylists = new Set();
+
+    const trackMenu = async (event, track, extra = [], { row = null, contextUri = '', fromBar = false } = {}) => {
       event.preventDefault();
       event.stopPropagation();
-      const { library, player } = meloir.services;
+      const { library, player, playlists } = meloir.services;
       const liked = await Promise.resolve(library.contains(track.uri)).then(([yes]) => !!yes).catch(() => false);
       const artist = (track.artists || []).find(a => a.uri);
+      const inLiked = String(contextUri).endsWith(':collection');
+      const inOwnPlaylist = editablePlaylists.has(contextUri) && track.uid;
       showMenu(event, [
         ...extra,
-        ['Add to queue', () => player.addToQueue([{ uri: track.uri }])],
+        fromBar ? null : ['Add to queue', () => player.addToQueue([{ uri: track.uri }])],
         ['Add to playlist', () => pickPlaylist(event, track)],
         ['Song radio', () => meloir.data.songRadio(track).then(radio => meloir.playList(radio.uri, radio.tracks.map(t => t.uri))).catch(() => {})],
         track.album && track.album.uri ? ['Go to album', () => openAlbum(idFrom(track.album.uri))] : null,
         artist ? ['Go to artist', () => openArtist(idFrom(artist.uri))] : null,
-        [liked ? 'Remove from Liked Songs' : 'Add to Liked Songs', () => (liked ? library.remove({ uris: [track.uri] }) : library.add({ uris: [track.uri] }))],
+        [liked ? 'Remove from Liked Songs' : 'Add to Liked Songs', () => {
+          if (!liked) return library.add({ uris: [track.uri] });
+          const back = inLiked ? fadeAway(row, 'Could not remove the song') : () => {};
+          Promise.resolve(library.remove({ uris: [track.uri] })).catch(back);
+        }],
+        inOwnPlaylist ? ['Remove from this playlist', () => {
+          const back = fadeAway(row, 'Could not remove the song');
+          Promise.resolve(playlists.remove(contextUri, [{ uri: track.uri, uid: track.uid }])).catch(back);
+        }] : null,
+        ['Copy link', () => copyLink(track.uri)],
       ]);
     };
 
@@ -758,7 +795,7 @@
 
     const row = (track, index, contextUri, withCover = true, playRow = null) => {
       const play = () => (playRow ? playRow(track) : meloir.play(contextUri || (track.album && track.album.uri), track.uri));
-      const el = h('div', { className: 'row' + (track.uri === currentUri ? ' now' : ''), ondblclick: play, oncontextmenu: event => trackMenu(event, track) },
+      const el = h('div', { className: 'row' + (track.uri === currentUri ? ' now' : ''), ondblclick: play, oncontextmenu: event => trackMenu(event, track, [], { row: el, contextUri }) },
         h('button', { className: 'n', title: 'Play', onclick: play },
           h('span', { className: 'num' }, String(index + 1)), h('span', { className: 'eq' }, h('i'), h('i'), h('i'))),
         withCover ? cover(track.album && track.album.images, true) : h('span'),
@@ -1045,6 +1082,8 @@
 
     const openPlaylist = id => show('pl' + id, async () => {
       const p = await meloir.data.playlist(id);
+      // Songs can only be taken out of playlists this account may change.
+      meloir.data.ownPlaylists().then(own => { if (own.some(list => list.uri === p.uri)) editablePlaylists.add(p.uri); }).catch(() => {});
       const pages = pagedRows(p.tracks, meloir.data.playlistPageSize, p.total, async offset => (await meloir.data.playlist(id, offset)).tracks, p.uri);
       return [header(p.images, p.name, [p.owner.display_name, p.total + ' songs'].filter(Boolean).join(' · '), p.uri, pages.tools, pages.play), pages.list, pages.none];
     });
@@ -1528,7 +1567,9 @@
     const grips = window.meloirNative ? [] : [1, 2, 3, 4, 5, 6, 7, 8].map(n => h('div', { className: 'grip g' + n, onmousedown: e => { if (e.button === 0) host('size:' + n); } }));
 
     // Player bar
-    const npCover = h('img', { alt: '', title: 'Now playing', onclick: () => full.classList.toggle('on') });
+    let barTrack = null;
+    const npCover = h('img', { alt: '', title: 'Now playing', onclick: () => full.classList.toggle('on'),
+      oncontextmenu: event => { if (barTrack) trackMenu(event, barTrack, [], { fromBar: true }); else event.preventDefault(); } });
     const npTitle = h('b');
     const npArtist = h('span');
     const heart = iconButton('heart', 'Like', async () => {
@@ -2273,6 +2314,7 @@
       if (s.item.uri === currentUri) return;
 
       currentUri = s.item.uri;
+      barTrack = isAd(s.item) ? null : s.item;
       remember(s.item, s.duration);
       const images = s.item.images || (s.item.album && s.item.album.images) || [];
       const artists = names(s.item.artists);
