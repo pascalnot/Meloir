@@ -163,11 +163,11 @@
   };
 
   // Answers are kept, so a song is only asked for once. The service limits how fast it is asked.
-  const LYRICS_CACHE = 'meloir.lyrics3.', LYRICS_CACHE_INDEX = 'meloir.lyrics3.index', LYRICS_CACHE_SIZE = 200, RATE_LIMIT_WAIT_MS = 120000;
+  const LYRICS_CACHE = 'meloir.lyrics4.', LYRICS_CACHE_INDEX = 'meloir.lyrics4.index', LYRICS_CACHE_SIZE = 200, RATE_LIMIT_WAIT_MS = 120000;
 
   // Earlier versions kept answers from fewer sources.
   try {
-    Object.keys(localStorage).filter(key => /^meloir\.lyrics2?\./.test(key)).forEach(key => localStorage.removeItem(key));
+    Object.keys(localStorage).filter(key => /^meloir\.lyrics[23]?\./.test(key)).forEach(key => localStorage.removeItem(key));
   } catch (e) { /* nothing kept */ }
 
   const cached = uri => {
@@ -225,7 +225,67 @@
     return [...xml.getElementsByTagName('p')].map(ttmlLine).filter(Boolean);
   };
 
-  const SOURCES = [{ name: 'LyricsPlus', get: fromLyricsPlus, askAgainAt: 0 }, { name: 'lrc.red', get: fromLrcRed, askAgainAt: 0 }];
+  // LRCLIB's word timing comes as a small YAML file: a list of lines, each with its words.
+  const yamlValue = raw => {
+    const value = raw.trim();
+    if (value.startsWith("'")) return value.slice(1, -1).replace(/''/g, "'");
+    if (value.startsWith('"')) { try { return JSON.parse(value); } catch (e) { return value.slice(1, -1); } }
+    return value;
+  };
+  const lrclibWords = file => {
+    const lines = [];
+    let line = null, word = null;
+    for (const text of String(file || '').split('\n')) {
+      const field = text.match(/^(\s*)(- )?(\w+):\s?(.*)$/);
+      if (!field) continue;
+      const [, indent, item, key, raw] = field;
+      if (indent === '' && item && key === 'text') { line = { text: yamlValue(raw), words: [] }; word = null; lines.push(line); }
+      else if (line && indent.length >= 2 && item && key === 'text') { word = { text: yamlValue(raw) }; line.words.push(word); }
+      else if (line && key === 'start_ms') (word || line).start = Number(raw);
+      else if (line && key === 'end_ms') (word || line).end = Number(raw);
+    }
+    return lines.filter(l => l.text && l.text.trim()).map(l => {
+      if (!l.words.length) return { start: l.start, end: l.end, text: l.text };
+      const words = l.words.map((w, i) => ({
+        at: w.start, end: w.end || (l.words[i + 1] ? l.words[i + 1].start : l.end),
+        text: /\s$/.test(w.text) || i === l.words.length - 1 ? w.text : w.text + ' ',
+      }));
+      return { start: l.start, text: l.text, words };
+    });
+  };
+  // Without word timing, each line lasts until the next one starts.
+  const lrcLines = lrc => {
+    const lines = [];
+    for (const text of String(lrc || '').split('\n')) {
+      const stamp = text.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
+      if (stamp) lines.push({ start: (Number(stamp[1]) * 60 + Number(stamp[2])) * 1000, text: stamp[3].trim() });
+    }
+    lines.forEach((line, i) => { line.end = lines[i + 1] ? lines[i + 1].start : line.start + 4000; });
+    return lines.filter(line => line.text);
+  };
+  const fromLrclib = async ({ title, artist, durationMs }) => {
+    const query = 'track_name=' + encodeURIComponent(title) + '&artist_name=' + encodeURIComponent(artist);
+    let found = null;
+    if (durationMs) {
+      const exact = await ask('https://lrclib.net/api/get?' + query + '&duration=' + Math.round(durationMs / 1000));
+      if (exact.ok) found = await exact.json();
+    }
+    if (!found) {
+      const search = await ask('https://lrclib.net/api/search?' + query);
+      if (!search.ok) return null;
+      found = (await search.json()).find(candidate => (candidate.syncedLyrics || candidate.lyricsfile) && sameTitle(candidate.trackName, title)
+        && sameArtist(candidate.artistName, artist) && (!durationMs || Math.abs(candidate.duration * 1000 - durationMs) <= SAME_SONG_MS));
+    }
+    if (!found || found.instrumental) return null;
+    if (found.hasWordSync && found.lyricsfile) {
+      const words = lrclibWords(found.lyricsfile);
+      if (words.length) return words;
+    }
+    return lrcLines(found.syncedLyrics);
+  };
+
+  const SOURCES = [{ name: 'LyricsPlus', get: fromLyricsPlus, askAgainAt: 0 }, { name: 'lrc.red', get: fromLrcRed, askAgainAt: 0 },
+    { name: 'LRCLIB', get: fromLrclib, askAgainAt: 0 }];
 
   // Many answers are labelled as word timed but have every time at 0: text with no timing.
   const hasTiming = lines => !!lines && lines.length > 0
