@@ -142,11 +142,14 @@
     .stage { margin-top:40px; }
   }
 
-  /* Only for this page: a shorter opening, and the table of services. */
+  /* Only for these pages: a shorter opening, group labels, and the table of services. */
   .hero.short { min-height:64svh; padding-bottom:24px; }
   .band .note + .more, .band .more + .note, .band .note + .sheet, .band .sheet + .note { margin-top:20px; }
   .band .more { margin-top:20px; }
-  .note code { font:14px Consolas,monospace; color:var(--fg); }
+  .band .small { margin-top:8px; }
+  .band .eyebrow { margin-top:36px; }
+  .band .eyebrow + .more { margin-top:8px; }
+  .note code, .more code { font:14px Consolas,monospace; color:var(--fg); }
   .note a, .more a, .sheet a { text-underline-offset:3px; text-decoration-color:var(--faint); }
   .note a:hover, .more a:hover, .sheet a:hover { text-decoration-color:var(--fg); }
   .sheet { margin-top:24px; overflow-x:auto; }
