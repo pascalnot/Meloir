@@ -2460,6 +2460,7 @@
       const typing = target && target.tagName === 'INPUT' && target.type !== 'range';
       if (e.key === '?' && !typing) { toggleKeys(); e.preventDefault(); return; }
       if (e.code === 'Escape' && keysPanel.classList.contains('on')) { toggleKeys(); e.preventDefault(); return; }
+      if (e.code === 'Escape' && newsPanel.classList.contains('on')) { closeNews(); e.preventDefault(); return; }
       if (e.code === 'Space' && !typing) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -2470,7 +2471,6 @@
       if (e.code === 'KeyQ' && !typing && !focusOn && !e.ctrlKey && !e.altKey) { toggleQueue(); e.preventDefault(); }
       if (e.code === 'Escape') {
         setTitleMenu(false);
-        closeNews();
         full.classList.remove('on');
         setFocus(false);
         if (queueOpen) toggleQueue();
