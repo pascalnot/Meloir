@@ -1620,8 +1620,8 @@
     pageButtons = [['back', 'Back', -1], ['forward', 'Forward', 1]].map(([cls, label, step]) =>
       h('button', { className: 'win page ' + cls, title: label, ariaLabel: label, disabled: true, onclick: () => travel(step) }, svg(WIN[cls], '0 0 10 10')));
     const menuBar = h('div', { className: 'menudots' }, dots, h('div', { className: 'pagenav' }, pageButtons), titleMenu);
-    // The mouse's side buttons go back and forward too.
-    window.addEventListener('mouseup', e => {
+    // The mouse's side buttons go back and forward too. They only reach the page as a press.
+    window.addEventListener('mousedown', e => {
       if (e.button !== 3 && e.button !== 4) return;
       e.preventDefault();
       e.stopPropagation();
