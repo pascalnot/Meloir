@@ -17,7 +17,7 @@
   const SHORTCUTS = [['Space', 'Play or pause'], ['F', 'Focus mode'], ['L', 'Lyrics in focus mode'], ['Q', 'Queue'], ['Ctrl+K', 'Search'],
     ['Ctrl+F', 'Filter songs'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
   const FILTERED_LIST_URI = 'spotify:internal:meloir', MELOIR_LINK = 'https://github.com/pascalnot/Meloir', DISCORD_MAX_TEXT = 128, DISCORD_SEEK_MS = 3000, SETTINGS_JUMP_MS = 900, SETTINGS_TOP_PX = 12, SETTINGS_ROW_PX = 26, SETTINGS_GLIDE_MS = 70, SETTINGS_REACHED_PX = 2;
-  const BEAT_FADE_MS = 180, BASS_FADE_MS = 420, BEAT_JUMP_MS = 1000, FLOW_RISE_MS = 60, FLOW_FALL_MS = 320, FLOW_BEAT_SHARE = 0.35, FLOW_BASS_SHARE = 0.55;
+  const BEAT_FADE_MS = 180, BASS_FADE_MS = 420, BEAT_JUMP_MS = 1000, FLOW_RISE_MS = 60, FLOW_FALL_MS = 320, FLOW_BEAT_SHARE = 0.35, FLOW_BASS_SHARE = 0.55, BUILD_PEAK = 0.7, DROP_FADE_MS = 1200;
   const MIN_IDLE_SECONDS = 15, MAX_IDLE_SECONDS = 300, MAX_TILT_DEGREES = 5, QUEUE_LENGTH = 40, QUEUE_REFRESH_MS = 2500, SCROLLBAR_NEAR_PX = 72;
   const COVER_FADE_MS = 700, MELOIR_BAR_HEIGHT = 36, SPOTIFY_BAR_HEIGHT = 64, MAX_REVEAL_STAGGER = 10, ROW_SHOWN_AT = 0.5, CARD_SHOWN_AT = 0.2, LYRICS_RETRY_MS = 8000;
   const COVER_MOVE_MS = 520, COVER_WAIT_MS = 170, LYRICS_FADE_OUT_MS = 170, LYRICS_WAIT_MS = 230, LYRICS_FADE_IN_MS = 380;
@@ -1914,7 +1914,7 @@
 
     // The line follows Spotify's analysis of the song: it breathes with how loud and deep the music is,
     // and lights up on each strong beat and bass hit.
-    let beats = [], beatsFor = null, nextBeat = 0, nextFlow = 0, flowTarget = 0, flowLevel = 0, beatLevel = 0, bassLevel = 0, beatFrame = 0, beatPosition = -Infinity, beatShown = '';
+    let beats = [], beatsFor = null, nextBeat = 0, nextFlow = 0, flowTarget = 0, flowLevel = 0, beatLevel = 0, bassLevel = 0, dropLevel = 0, beatFrame = 0, beatPosition = -Infinity, beatShown = '';
     const pulse = s => {
       const { beatGlow, bassGlow } = meloir.prefs;
       const now = performance.now(), on = (beatGlow || bassGlow) && !calm();
@@ -1935,9 +1935,11 @@
         const flowAhead = flow.findIndex(point => point.at > s.position);
         nextFlow = flowAhead < 0 ? flow.length : flowAhead;
       }
+      const before = beatPosition;
       beatPosition = s.position;
       beatLevel *= Math.exp(-(now - beatFrame) / BEAT_FADE_MS);
       bassLevel *= Math.exp(-(now - beatFrame) / BASS_FADE_MS);
+      dropLevel *= Math.exp(-(now - beatFrame) / DROP_FADE_MS);
       // The line breathes with how loud and how deep the song is, rising quickly and settling slowly.
       for (; nextFlow < flow.length && flow[nextFlow].at <= s.position; nextFlow++) {
         const point = flow[nextFlow];
@@ -1951,7 +1953,13 @@
         if (bassGlow) bassLevel = Math.max(bassLevel, beats[nextBeat].bass);
         if (beatGlow) beatLevel = Math.max(beatLevel, beats[nextBeat].level);
       }
-      const shown = (on ? Math.max(flowLevel, beatLevel, bassLevel) : 0).toFixed(2);
+      // Before a drop the line slowly rises, then bursts as it lands.
+      let build = 0;
+      for (const drop of beatGlow && on && !s.isPaused ? beats.drops || [] : []) {
+        if (s.position >= drop.from && s.position < drop.at) build = Math.max(build, Math.pow((s.position - drop.from) / (drop.at - drop.from), 2) * BUILD_PEAK);
+        if (before < drop.at && s.position >= drop.at && s.position - before < BEAT_JUMP_MS) dropLevel = 1;
+      }
+      const shown = (on ? Math.max(flowLevel, beatLevel, bassLevel, build, dropLevel) : 0).toFixed(2);
       if (shown !== beatShown) focusProgress.style.setProperty('--beat', beatShown = shown);
     };
 
