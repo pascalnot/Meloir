@@ -8,6 +8,7 @@ What changed in each version of Meloir, newest first.
 
 ### New
 
+- **Back and forward.** Arrows next to the menu in the title bar, Alt+Left and Alt+Right, or the mouse's side buttons. Each page comes back where you had scrolled to.
 - **Spotify's lyrics.** A switch in Settings → Focus mode that always shows the lyrics Spotify has, timed line by line. Other services are only asked when Spotify has none.
 
 ### Fixed

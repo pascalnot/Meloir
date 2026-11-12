@@ -15,8 +15,8 @@
   const PLAY_COUNTS_MS = 30000, SAVE_LISTENING_MS = 60000, MAX_STATS_SONGS = 400, STATS_TOP = 10, STATS_COUNT_MS = 900, STATS_KEEP_DAYS = 400, NEWS_DELAY_MS = 1600;
   const STATS_RANGES = [['week', '7 days', 7], ['month', '30 days', 30], ['all', 'All time', 0]];
   const SHORTCUTS = [['Space', 'Play or pause'], ['F', 'Focus mode'], ['L', 'Lyrics in focus mode'], ['Q', 'Queue'], ['Ctrl+K', 'Search'],
-    ['Ctrl+F', 'Filter songs'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
-  const FILTERED_LIST_URI = 'spotify:internal:meloir', MELOIR_LINK = 'https://github.com/pascalnot/Meloir', DISCORD_MAX_TEXT = 128, DISCORD_SEEK_MS = 3000, SETTINGS_JUMP_MS = 900, SETTINGS_TOP_PX = 12, SETTINGS_ROW_PX = 26, SETTINGS_GLIDE_MS = 70, SETTINGS_REACHED_PX = 2;
+    ['Ctrl+F', 'Filter songs'], ['Alt+Left', 'Back'], ['Alt+Right', 'Forward'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
+  const PAGES_KEPT = 50, FILTERED_LIST_URI = 'spotify:internal:meloir', MELOIR_LINK = 'https://github.com/pascalnot/Meloir', DISCORD_MAX_TEXT = 128, DISCORD_SEEK_MS = 3000, SETTINGS_JUMP_MS = 900, SETTINGS_TOP_PX = 12, SETTINGS_ROW_PX = 26, SETTINGS_GLIDE_MS = 70, SETTINGS_REACHED_PX = 2;
   const BEAT_FADE_MS = 180, DROP_FADE_MS = 800, BEAT_JUMP_MS = 1000;
   const MIN_IDLE_SECONDS = 15, MAX_IDLE_SECONDS = 300, MAX_TILT_DEGREES = 5, QUEUE_LENGTH = 40, QUEUE_REFRESH_MS = 2500, SCROLLBAR_NEAR_PX = 72;
   const COVER_FADE_MS = 700, MELOIR_BAR_HEIGHT = 36, SPOTIFY_BAR_HEIGHT = 64, MAX_REVEAL_STAGGER = 10, ROW_SHOWN_AT = 0.5, CARD_SHOWN_AT = 0.2, LYRICS_RETRY_MS = 8000;
@@ -106,6 +106,11 @@
     .titlemenu.on button { opacity: 1; transform: none; transition-delay: calc(var(--n) * 40ms), calc(var(--n) * 40ms), 0s, 0s; }
     .titlemenu button:hover, .titlemenu button.on { color: var(--fg); background: var(--press); }
     .titlemenu button:active { transform: none; }
+    .pagenav { display: flex; gap: 2px; width: 62px; overflow: hidden; transition: width .3s var(--ease), opacity .2s; }
+    .menudots.open .pagenav, #app.focusing .pagenav { width: 0; opacity: 0; }
+    .win.page:disabled { opacity: .3; pointer-events: none; }
+    .win.back:hover svg { transform: translateX(-1.5px); }
+    .win.forward:hover svg { transform: translateX(1.5px); }
     .win.dots svg { width: 14px; height: 14px; fill: currentColor; stroke: none; }
     .win.dots:hover svg { transform: scale(1.14); }
     .win.dots.on { color: var(--fg); }
@@ -489,7 +494,7 @@
   };
   const WIN = {
     dots: 'M1.5 4a1 1 0 100 2 1 1 0 000-2zM5 4a1 1 0 100 2 1 1 0 000-2zM8.500 4a1 1 0 100 2 1 1 0 000-2z',
-    min: 'M0 5.5h10', max: 'M.5.5h9v9h-9z', restore: 'M2.5 2.5V.5h7v7h-2M.5 2.500h7v7h-7z', close: 'M.5.5l9 9M9.500.5l-9 9',
+    back: 'M6.5 1.5L3 5l3.5 3.5', forward: 'M3.5 1.5L7 5 3.5 8.5', min: 'M0 5.5h10', max: 'M.5.5h9v9h-9z', restore: 'M2.5 2.5V.5h7v7h-2M.5 2.500h7v7h-7z', close: 'M.5.5l9 9M9.500.5l-9 9',
   };
 
   const NS = 'http://www.w3.org/2000/svg';
@@ -652,8 +657,19 @@
       }
     };
 
-    const show = async (key, build) => {
+    // Back and forward go through the pages opened before, each back where it was scrolled to.
+    const pages = [];
+    let pageAt = -1, travelling = false, pageButtons = null;
+    const show = async (key, build, scroll = 0) => {
       const id = ++viewId;
+      if (pages[pageAt]) pages[pageAt].scroll = main.scrollTop;
+      if (!travelling) {
+        // Opening the page already shown only draws it again.
+        if (!pages[pageAt] || pages[pageAt].key !== key) pages.splice(++pageAt);
+        pages[pageAt] = { key, build, scroll: 0 };
+        if (pages.length > PAGES_KEPT) pageAt -= pages.splice(0, pages.length - PAGES_KEPT).length;
+      }
+      if (pageButtons) pageButtons.forEach((button, i) => { button.disabled = !pages[pageAt + (i ? 1 : -1)]; });
       for (const [name, link] of Object.entries(links)) link.classList.toggle('on', name === key);
       placeNavMark();
       full.classList.remove('on');
@@ -665,6 +681,7 @@
         const content = await build();
         if (id !== viewId) return;
         main.replaceChildren(...[content].flat());
+        main.scrollTop = scroll;
       } catch (e) {
         if (id !== viewId) return;
         main.replaceChildren(h('h1', {}, 'Could not load this'), h('p', { className: 'note' }, e.message));
@@ -1170,13 +1187,13 @@
           h('span', {}, artist.name), h('i', { style: 'width: ' + artist.n / artists[0].n * 100 + '%' }), h('small', {}, String(artist.n))))];
     });
 
-    const openAlbum = id => show('album', async () => {
+    const openAlbum = id => show('album' + id, async () => {
       const a = await meloir.data.album(id);
       return [header(a.images, a.name, [...artistLinks(a.artists), a.year ? ' · ' + a.year : ''], a.uri, saveButton(a.uri)),
         ...a.tracks.map((t, n) => row(t, n, a.uri, false))];
     });
 
-    const openArtist = id => show('artist', async () => {
+    const openArtist = id => show('artist' + id, async () => {
       const a = await meloir.data.artist(id);
       return [header(a.images, a.name, 'Artist', a.uri, mixButton(id)),
         h('h2', {}, 'Popular'), ...a.tracks.map((t, n) => row(t, n, a.uri)),
@@ -1583,13 +1600,33 @@
     const titleMenu = h('div', { className: 'titlemenu' }, titleButtons);
     const setTitleMenu = on => {
       titleMenu.classList.toggle('on', on);
+      menuBar.classList.toggle('open', on);
       dots.classList.toggle('on', on);
       if (on) return;
       titleButtons.forEach(button => button.classList.remove('on'));
       closeMenu();
     };
     const dots = h('button', { className: 'win dots', title: 'Menu', ariaLabel: 'Menu', onclick: () => setTitleMenu(!titleMenu.classList.contains('on')) }, svg(WIN.dots, '0 0 10 10'));
-    const menuBar = h('div', { className: 'menudots' }, dots, titleMenu);
+    const travel = step => {
+      const page = pages[pageAt + step];
+      if (!page) return;
+      if (focusOn) setFocus(false);
+      pages[pageAt].scroll = main.scrollTop;
+      pageAt += step;
+      travelling = true;
+      show(page.key, page.build, page.scroll);
+      travelling = false;
+    };
+    pageButtons = [['back', 'Back', -1], ['forward', 'Forward', 1]].map(([cls, label, step]) =>
+      h('button', { className: 'win page ' + cls, title: label, ariaLabel: label, disabled: true, onclick: () => travel(step) }, svg(WIN[cls], '0 0 10 10')));
+    const menuBar = h('div', { className: 'menudots' }, dots, h('div', { className: 'pagenav' }, pageButtons), titleMenu);
+    // The mouse's side buttons go back and forward too.
+    window.addEventListener('mouseup', e => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      e.stopPropagation();
+      travel(e.button === 3 ? -1 : 1);
+    }, true);
     window.addEventListener('mousedown', event => {
       if (!titleMenu.classList.contains('on')) return;
       const path = event.composedPath();
@@ -2463,6 +2500,7 @@
       if (app.classList.contains('off')) return;
       e.stopPropagation();
       if (e.ctrlKey && e.code === 'KeyK') { openSearch(); e.preventDefault(); return; }
+      if (e.altKey && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { travel(e.code === 'ArrowLeft' ? -1 : 1); e.preventDefault(); return; }
       if (e.ctrlKey && e.code === 'KeyF') {
         const box = main.querySelector('.filter');
         if (box) box.focus();
