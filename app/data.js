@@ -84,7 +84,7 @@
     includePreReleases: false, includeAlbumPreReleases: false, includeEpisodeContentRatingsV2: true,
   });
 
-  const LYRICS_TIMEOUT_MS = 6000, SAME_SONG_MS = 4000;
+  const LYRICS_TIMEOUT_MS = 6000, SAME_SONG_MS = 4000, WORD_MIN_MS = 400, WORD_PACE_TIMES = 2.5;
 
   // Titles and artists as letters and digits only, without accents and without the extras
   // Spotify adds, such as "- 2011 Remaster" or "(feat. X)".
@@ -163,11 +163,11 @@
   };
 
   // Answers are kept, so a song is only asked for once. The service limits how fast it is asked.
-  const LYRICS_CACHE = 'meloir.lyrics4.', LYRICS_CACHE_INDEX = 'meloir.lyrics4.index', LYRICS_CACHE_SIZE = 200, RATE_LIMIT_WAIT_MS = 120000;
+  const LYRICS_CACHE = 'meloir.lyrics5.', LYRICS_CACHE_INDEX = 'meloir.lyrics5.index', LYRICS_CACHE_SIZE = 200, RATE_LIMIT_WAIT_MS = 120000;
 
-  // Earlier versions kept answers from fewer sources.
+  // Earlier versions kept answers from fewer sources, or with words timed too long.
   try {
-    Object.keys(localStorage).filter(key => /^meloir\.lyrics[23]?\./.test(key)).forEach(key => localStorage.removeItem(key));
+    Object.keys(localStorage).filter(key => /^meloir\.lyrics[234]?\./.test(key)).forEach(key => localStorage.removeItem(key));
   } catch (e) { /* nothing kept */ }
 
   const cached = uri => {
@@ -244,10 +244,14 @@
       else if (line && key === 'start_ms') (word || line).start = Number(raw);
       else if (line && key === 'end_ms') (word || line).end = Number(raw);
     }
+    // Words often come with only a start. Stretched to the next word, one sung before a pause would
+    // light up across the whole pause, so such a word lasts as long as the song's words usually do.
+    const gaps = lines.flatMap(l => l.words.slice(1).map((w, i) => w.start - l.words[i].start)).filter(gap => gap > 0).sort((a, b) => a - b);
+    const longest = Math.max(WORD_MIN_MS, (gaps[Math.floor(gaps.length / 2)] || 0) * WORD_PACE_TIMES);
     return lines.filter(l => l.text && l.text.trim()).map(l => {
       if (!l.words.length) return { start: l.start, end: l.end, text: l.text };
       const words = l.words.map((w, i) => ({
-        at: w.start, end: w.end || (l.words[i + 1] ? l.words[i + 1].start : l.end),
+        at: w.start, end: w.end || Math.min(l.words[i + 1] ? l.words[i + 1].start : l.end, w.start + longest),
         text: /\s$/.test(w.text) || i === l.words.length - 1 ? w.text : w.text + ' ',
       }));
       return { start: l.start, text: l.text, words };
