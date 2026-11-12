@@ -128,7 +128,7 @@ two never play at once. They can be turned off in Settings.
 [lrc.red](https://lrc.red) and [LRCLIB](https://lrclib.net), which receive the song's title, artist and length. It isn't available for
 every song, and those songs use Spotify's line timing instead.
 
-**Glow.** The beat and drop glow follow Spotify's analysis of each song, not the sound itself, so a
+**Glow.** The beat and bass glow follow Spotify's analysis of each song, not the sound itself, so a
 song without an analysis does not glow.
 
 **Mix and Song radio** turn shuffle off to keep their order, and shuffle stays off afterwards.

@@ -17,7 +17,7 @@
   const SHORTCUTS = [['Space', 'Play or pause'], ['F', 'Focus mode'], ['L', 'Lyrics in focus mode'], ['Q', 'Queue'], ['Ctrl+K', 'Search'],
     ['Ctrl+F', 'Filter songs'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
   const FILTERED_LIST_URI = 'spotify:internal:meloir', MELOIR_LINK = 'https://github.com/pascalnot/Meloir', DISCORD_MAX_TEXT = 128, DISCORD_SEEK_MS = 3000, SETTINGS_JUMP_MS = 900, SETTINGS_TOP_PX = 12, SETTINGS_ROW_PX = 26, SETTINGS_GLIDE_MS = 70, SETTINGS_REACHED_PX = 2;
-  const BEAT_FADE_MS = 180, DROP_FADE_MS = 1600, BEAT_JUMP_MS = 1000;
+  const BEAT_FADE_MS = 180, BASS_FADE_MS = 420, BEAT_JUMP_MS = 1000;
   const MIN_IDLE_SECONDS = 15, MAX_IDLE_SECONDS = 300, MAX_TILT_DEGREES = 5, QUEUE_LENGTH = 40, QUEUE_REFRESH_MS = 2500, SCROLLBAR_NEAR_PX = 72;
   const COVER_FADE_MS = 700, MELOIR_BAR_HEIGHT = 36, SPOTIFY_BAR_HEIGHT = 64, MAX_REVEAL_STAGGER = 10, ROW_SHOWN_AT = 0.5, CARD_SHOWN_AT = 0.2, LYRICS_RETRY_MS = 8000;
   const COVER_MOVE_MS = 520, COVER_WAIT_MS = 170, LYRICS_FADE_OUT_MS = 170, LYRICS_WAIT_MS = 230, LYRICS_FADE_IN_MS = 380;
@@ -466,11 +466,11 @@
       opacity: 0; transition: opacity .3s, transform .3s var(--ease); }
     #focus.awake .fctl { opacity: 1; transform: translate(-50%, 0); }
     #focus.asleep { cursor: none; }
-    /* A beat is a quick tick of the line. A drop is a bigger, slower bloom, with light rising from the bottom. */
-    .fline { position: absolute; left: 0; bottom: 0; height: calc(2px + 3px * var(--drop, 0)); background: var(--fg); opacity: calc(.7 + .3 * max(var(--beat, 0), var(--drop, 0))); }
+    /* A beat is a quick tick of the line. The bass thumps as light rising from the bottom, and thickens the line a little. */
+    .fline { position: absolute; left: 0; bottom: 0; height: calc(2px + 2px * var(--bass, 0)); background: var(--fg); opacity: calc(.7 + .3 * max(var(--beat, 0), var(--bass, 0))); }
     .fline::after { content: ''; position: absolute; inset: 0; box-shadow: 0 0 16px 2px #fff; opacity: var(--beat, 0); }
     .fline::before { content: ''; position: absolute; left: 0; bottom: 0; width: 100vw; height: 46vh; pointer-events: none;
-      background: radial-gradient(70% 100% at 50% 100%, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05) 45%, transparent 75%); opacity: var(--drop, 0); }
+      background: radial-gradient(70% 100% at 50% 100%, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05) 45%, transparent 75%); opacity: var(--bass, 0); }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -1400,7 +1400,7 @@
         h('div', { className: 'set' },
           glowSwitch('Cursor', 'A soft light that follows the mouse.', 'cursorGlow', applyLook),
           glowSwitch('Beats', 'The line in focus mode pulses on strong beats.', 'beatGlow'),
-          glowSwitch('Drops', 'The line in focus mode flashes where the song gets clearly louder.', 'dropGlow')),
+          glowSwitch('Bass', 'Light rises from the bottom of focus mode with the bass.', 'bassGlow')),
 
         h('h2', {}, 'Focus mode'),
         setting('Open in focus mode', null, prefSwitch('focusOnOpen', 'Open in focus mode')),
@@ -1915,11 +1915,11 @@
       });
     };
 
-    // The line lights on each beat that Spotify's analysis marks as strong, and for longer on a drop.
-    let beats = [], beatsFor = null, nextBeat = 0, beatLevel = 0, dropLevel = 0, beatFrame = 0, beatPosition = -Infinity, beatShown = '', dropShown = '';
+    // The line lights on each beat that Spotify's analysis marks as strong, and light rises with the bass.
+    let beats = [], beatsFor = null, nextBeat = 0, beatLevel = 0, bassLevel = 0, beatFrame = 0, beatPosition = -Infinity, beatShown = '', bassShown = '';
     const pulse = s => {
-      const { beatGlow, dropGlow } = meloir.prefs;
-      const now = performance.now(), on = (beatGlow || dropGlow) && !calm();
+      const { beatGlow, bassGlow } = meloir.prefs;
+      const now = performance.now(), on = (beatGlow || bassGlow) && !calm();
       const uri = s.item && s.item.uri;
       if (on && uri !== beatsFor) {
         beatsFor = uri;
@@ -1936,16 +1936,16 @@
       }
       beatPosition = s.position;
       beatLevel *= Math.exp(-(now - beatFrame) / BEAT_FADE_MS);
-      dropLevel *= Math.exp(-(now - beatFrame) / DROP_FADE_MS);
+      bassLevel *= Math.exp(-(now - beatFrame) / BASS_FADE_MS);
       beatFrame = now;
       for (; nextBeat < beats.length && beats[nextBeat].at <= s.position; nextBeat++) {
         if (!on || s.isPaused) continue;
-        if (dropGlow && beats[nextBeat].drop) dropLevel = 1;
+        if (bassGlow) bassLevel = Math.max(bassLevel, beats[nextBeat].bass);
         if (beatGlow) beatLevel = Math.max(beatLevel, beats[nextBeat].level);
       }
-      const shown = (on ? beatLevel : 0).toFixed(2), shownDrop = (on ? dropLevel : 0).toFixed(2);
+      const shown = (on ? beatLevel : 0).toFixed(2), shownBass = (on ? bassLevel : 0).toFixed(2);
       if (shown !== beatShown) focusProgress.style.setProperty('--beat', beatShown = shown);
-      if (shownDrop !== dropShown) focusProgress.style.setProperty('--drop', dropShown = shownDrop);
+      if (shownBass !== bassShown) focusProgress.style.setProperty('--bass', bassShown = shownBass);
     };
 
     const focusTick = () => {
