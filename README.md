@@ -95,6 +95,9 @@ Meloir restarts Spotify when it opens, so anything playing stops for a moment. O
 gives you the normal app. While Meloir runs, Spotify's window sits on Meloir's taskbar button, so you can
 unpin Spotify.
 
+Closing Meloir keeps it playing in the tray: click its icon to open it again, or right-click it and choose
+**Quit**. Settings can start Meloir with Windows, open or hidden in the tray.
+
 To remove Meloir, run `MeloirSetup.exe` again and choose **Uninstall**, or use Windows Settings. Spotify is
 not touched.
 
@@ -108,6 +111,7 @@ not touched.
 | <kbd>Q</kbd> | Show or hide the queue |
 | <kbd>Ctrl</kbd>+<kbd>K</kbd> | Search |
 | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Filter the songs in a playlist or Liked Songs |
+| <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd> | Back and forward, also the mouse's side buttons |
 | <kbd>?</kbd> | Show all shortcuts |
 | <kbd>Esc</kbd> | Close what's open |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd> | Show or hide the real Spotify interface underneath |

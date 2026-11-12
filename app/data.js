@@ -67,6 +67,9 @@
     };
   };
 
+  // When a song was added to a list, in milliseconds. Spotify gives it as text or as a date.
+  const addedTime = at => (at ? new Date(at.isoString || at).getTime() || 0 : 0);
+
   const toLibraryItem = wrapper => {
     const d = unwrap(wrapper);
     const uri = (wrapper && wrapper._uri) || (d && d.uri) || '';
@@ -356,7 +359,7 @@
       });
       return {
         ...toPlaylist({ ...p, uri }), total: p.content.totalCount,
-        tracks: p.content.items.filter(i => known(unwrap(i.itemV2))).map(i => ({ ...toTrack(unwrap(i.itemV2)), uid: i.uid })),
+        tracks: p.content.items.filter(i => known(unwrap(i.itemV2))).map(i => ({ ...toTrack(unwrap(i.itemV2)), uid: i.uid, added: addedTime(i.addedAt) })),
       };
     },
 
@@ -452,7 +455,7 @@
       return (page.items || []).map(t => ({
         uri: t.uri, name: t.name, artists: t.artists || [],
         album: t.album ? { uri: t.album.uri, name: t.album.name, images: sources(t.album.images) } : null,
-        duration_ms: t.duration && t.duration.milliseconds,
+        duration_ms: t.duration && t.duration.milliseconds, added: addedTime(t.addedAt),
       }));
     },
 

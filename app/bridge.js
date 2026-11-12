@@ -43,7 +43,7 @@
 
   // Meloir.exe keeps these in a file: it hands them over at startup and saves every change.
   meloir.prefs = {
-    smooth: true, smoothSeconds: 4, playOnOpen: false, focusOnOpen: false, compact: false, still: false, showLyrics: true,
+    smooth: true, smoothSeconds: 4, playOnOpen: false, focusOnOpen: false, compact: false, still: false, showLyrics: true, pinned: [],
     cursorGlow: true, idleFade: true, idleSeconds: 60, coverTilt: true, beatGlow: true, dropGlow: true,
     theme: 'dark', history: [], recentOpen: false, unmuteVolume: 50, discord: false, discordButton: true, coverBackdrop: false, coverBackdropLevel: 40, adsBlocked: 0, adsBlockedSince: 0, seenVersion: '', statsRange: 'all', searches: [], genres: {}, focusBlur: 22, focusBlurSize: 100, stats: { since: 0, ms: 0, plays: 0, tracks: {}, artists: {}, days: {} },
   };

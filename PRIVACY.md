@@ -13,6 +13,7 @@ These are kept in `%LOCALAPPDATA%\Meloir`:
 - **History:** the last 30 songs you played and your recent searches.
 - **Stats:** how long you listened, and your most played songs and artists, in total and per day for up to 400 days.
 - **Ad breaks blocked:** how many times Meloir stopped Spotify from starting ads, and since when.
+- **Pinned playlists:** which playlists you keep at the top of the sidebar.
 - **Last version seen:** so Meloir knows when to show what's new after an update.
 - **Genres:** the genre found for each artist, so it is only looked up once.
 - **Error log:** a short record of problems with saving settings, in `errors.log`.
@@ -21,7 +22,7 @@ These are kept in `%LOCALAPPDATA%\Meloir`:
 Song lyrics that were found are also kept, for up to 200 songs, inside Spotify's own storage on your PC.
 
 **To delete them:** in Settings, **Clear** removes your history, searches, Stats and genres. Uninstalling Meloir removes
-everything in the Meloir folder.
+everything in the Meloir folder, and the entry that starts it with Windows if you turned that on.
 
 ## What goes to other services
 

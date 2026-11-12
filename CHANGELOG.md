@@ -9,6 +9,9 @@ What changed in each version of Meloir, newest first.
 ### New
 
 - **Back and forward.** Arrows next to the menu in the title bar, Alt+Left and Alt+Right, or the mouse's side buttons. Each page comes back where you had scrolled to.
+- **Start with Windows.** In Settings → Playback, optionally starting hidden in the tray.
+- **Pinned playlists.** Right-click a playlist in the sidebar to keep it at the top.
+- **Sort songs.** Playlists and Liked Songs sort by title, artist, album, length or when songs were added. Play follows the order shown.
 - **Ad breaks blocked.** Settings → Ads counts every ad break Meloir stopped, for good instead of per session.
 
 ### Changed
@@ -17,6 +20,7 @@ What changed in each version of Meloir, newest first.
 
 ### Fixed
 
+- Closing Meloir puts it in a tray icon of its own, which opens it again with a click. Spotify's icon didn't. Right-click the icon or use File → Quit to end it, and starting Meloir again while it's in the tray shows it.
 - When the next line starts before the last one is sung to the end, both stay lit instead of the first one being skipped.
 - Words from LRCLIB no longer light up slowly across a pause.
 

@@ -198,6 +198,7 @@
     .genrenote:empty { display: none; }
     .acts { align-items: center; gap: 14px; margin-top: 18px; }
     .acts .play, .acts .filter, .acts .genrewrap { margin-top: 0; }
+    .lists .link.lastpin { margin-bottom: 10px; }
     .acts > .filter, .genrebutton { box-sizing: border-box; height: 28px; padding: 0 2px; font: 14px/26px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: var(--fg); border-bottom: 1px solid var(--faint); }
     .acts > .filter::placeholder, .genrebutton { color: var(--mute); }
 
@@ -834,6 +835,7 @@
         iconButton('plus', 'Add to queue', () => meloir.services.player.addToQueue([{ uri: track.uri }]), 'ico q'),
         h('div', { className: 'd' }, time(track.duration_ms)));
       el.dataset.uri = track.uri;
+      el.order = index;
       el.dataset.find = plain([track.name, names(track.artists), track.album && track.album.name].join(' '));
       el.track = track;
       return el;
@@ -845,7 +847,7 @@
       const view = viewId;
       const list = h('div', {}, first.map((t, n) => row(t, n, contextUri, true, t => playRow(t))));
       const none = h('p', { className: 'note', style: 'display: none' }, 'No songs match');
-      let offset = size, loading = null, finished = first.length === 0 || offset >= total, query = '', genre = '';
+      let offset = size, loading = null, finished = first.length === 0 || offset >= total, query = '', genre = '', sort = '';
       const leadOf = el => (el.track.artists || [])[0] || {};
       const apply = () => {
         let shown = 0;
@@ -885,8 +887,34 @@
         const uris = [...list.children].filter(el => el.style.display !== 'none').map(el => el.dataset.uri);
         if (uris.length) await meloir.playList(FILTERED_LIST_URI, uris, from, meloir.services.player.getState().shuffle);
       };
-      const playAll = () => (query || genre ? playShown() : meloir.play(contextUri));
-      const playRow = track => (query || genre ? playShown(track.uri) : meloir.play(contextUri, track.uri));
+      const changed = () => query || genre || sort;
+      const playAll = () => (changed() ? playShown() : meloir.play(contextUri));
+      const playRow = track => (changed() ? playShown(track.uri) : meloir.play(contextUri, track.uri));
+
+      // Sorting only changes what is shown, and Play then plays in that order.
+      const sortLabel = h('span', {}, 'Sort');
+      const sortBy = async (name, key) => {
+        sort = key ? name : '';
+        sortLabel.textContent = sort || 'Sort';
+        sortButton.classList.toggle('on', !!sort);
+        await loadAll();
+        const rows = [...list.children].sort((a, b) => (key ? key(a.track, b.track) : 0) || a.order - b.order);
+        list.append(...rows);
+        riseIn(rows.filter(el => el.style.display !== 'none'), main.getBoundingClientRect().bottom);
+      };
+      const text = pick => (a, b) => pick(a).localeCompare(pick(b), undefined, { sensitivity: 'base', numeric: true });
+      const SORTS = [
+        ['Custom order', null],
+        ['Title', text(t => t.name || '')],
+        ['Artist', text(t => names(t.artists) || '')],
+        ['Album', text(t => (t.album && t.album.name) || '')],
+        ['Length', (a, b) => (a.duration_ms || 0) - (b.duration_ms || 0)],
+        ['Recently added', (a, b) => (b.added || 0) - (a.added || 0)],
+      ];
+      const sortButton = h('button', { className: 'genrebutton', ariaLabel: 'Sort songs', onclick: () => {
+        const box = sortButton.getBoundingClientRect();
+        showMenu({ clientX: box.left, clientY: box.bottom + 8 }, SORTS.map(([name, key]) => [name, () => sortBy(name, key)]));
+      } }, sortLabel, svg('M2 4l4 4 4-4', '0 0 12 12'));
       const box = h('input', { className: 'filter', placeholder: 'Search songs', spellcheck: false, ariaLabel: 'Search songs', oninput: async () => {
         query = plain(box.value.trim());
         apply();
@@ -944,7 +972,7 @@
 
       main.onscroll = more;
       setTimeout(more);
-      return { list, none, tools: [box, genreWrap], play: playAll };
+      return { list, none, tools: [box, genreWrap, h('div', { className: 'genrewrap' }, sortButton)], play: playAll };
     };
 
     const header = (images, title, sub, contextUri, extra, play = () => meloir.play(contextUri)) => h('div', { className: 'head' }, cover(images),
@@ -1360,6 +1388,29 @@
       fill(blurSize, meloir.prefs.focusBlurSize, 100);
       sizeText();
 
+      // Starting with Windows lives in Windows itself, so Meloir.exe sets it and says how it is.
+      const startupSettings = () => {
+        let mode = window.meloirStartup || 'off';
+        const sw = (label, on, click) => {
+          const button = h('button', { className: 'switch' + (on() ? ' on' : ''), role: 'switch', ariaLabel: label, onclick: () => { click(); refresh(); } });
+          return button;
+        };
+        const change = next => {
+          mode = window.meloirStartup = next;
+          host('startup:' + mode);
+        };
+        const startSwitch = sw('Start with Windows', () => mode !== 'off', () => change(mode === 'off' ? 'open' : 'off'));
+        const traySwitch = sw('Start in the tray', () => mode === 'tray', () => change(mode === 'tray' ? 'open' : 'tray'));
+        const trayRow = setting('Start in the tray', 'Meloir starts hidden in the tray. Click its icon to open it.', traySwitch);
+        const refresh = () => {
+          startSwitch.classList.toggle('on', mode !== 'off');
+          traySwitch.classList.toggle('on', mode === 'tray');
+          trayRow.style.display = mode === 'off' ? 'none' : '';
+        };
+        refresh();
+        return [setting('Start with Windows', null, startSwitch), trayRow];
+      };
+
       const glowSwitch = (label, about, name, onChange) => h('div', { className: 'line sub' },
         h('div', {}, h('b', {}, label), h('p', {}, about)), prefSwitch(name, name === 'cursorGlow' ? 'Cursor glow' : 'Glow on ' + label.toLowerCase(), onChange));
 
@@ -1386,6 +1437,7 @@
           h('div', { className: 'line' }, h('b', {}, 'AutoMix'), autoMix),
           h('p', {}, 'Spotify\'s own mixing between songs. It may need Premium.')),
         setting('Play when Meloir opens', null, prefSwitch('playOnOpen', 'Play when Meloir opens')),
+        ...(window.meloirNative ? startupSettings() : []),
 
         h('h2', {}, 'Sound'),
         h('div', { className: 'set' },
@@ -1542,7 +1594,23 @@
     });
 
     const fillLists = () => getLibrary().then(items => {
-      lists.replaceChildren(...items.filter(i => i.type === 'playlist').map(p => link('pl' + p.id, p.name, () => openPlaylist(p.id))));
+      const pinned = meloir.prefs.pinned || [];
+      const playlists = items.filter(i => i.type === 'playlist');
+      const first = pinned.map(id => playlists.find(p => p.id === id)).filter(Boolean);
+      lists.replaceChildren(...[...first, ...playlists.filter(p => !pinned.includes(p.id))].map(p => {
+        const el = link('pl' + p.id, p.name, () => openPlaylist(p.id));
+        el.oncontextmenu = event => {
+          event.preventDefault();
+          const on = (meloir.prefs.pinned || []).includes(p.id);
+          showMenu(event, [[on ? 'Unpin' : 'Pin to top', () => {
+            const now = (meloir.prefs.pinned || []).filter(id => id !== p.id);
+            meloir.setPref('pinned', on ? now : [...now, p.id]);
+            fillLists();
+          }]]);
+        };
+        return el;
+      }));
+      if (first.length) lists.children[first.length - 1].classList.add('lastpin');
       placeNavMark();
     }).catch(() => {});
     let linkCount = 0;
@@ -1575,7 +1643,7 @@
     const maxButton = winButton('max', 'Maximize', WIN.max, 'max');
     // The dots unfold Meloir's menus along the title bar. Spotify's own menu stays at the end of Help.
     const titleMenus = () => ({
-      File: [['New playlist', () => newPlaylist(titleAnchor)], ['Settings', () => openSettings()], ['Close', () => host('close')]],
+      File: [['New playlist', () => newPlaylist(titleAnchor)], ['Settings', () => openSettings()], ['Close to tray', () => host('close')], ['Quit', () => host('quit')]],
       View: [['Focus mode', () => setFocus(true)], ['Queue', () => toggleQueue()], ['Spotify\'s interface', () => toggleSpotify()]],
       Playback: [['Play or pause', () => toggle()], ['Next', () => meloir.next()], ['Previous', () => meloir.services.player.skipToPrevious()],
         ['Shuffle', () => shuffle.click()], ['Repeat', () => repeat.click()], [+volume.value ? 'Mute' : 'Unmute', () => toggleMute()]],

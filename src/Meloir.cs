@@ -16,6 +16,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
+using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Meloir")]
 [assembly: AssemblyProduct("Meloir")]
@@ -235,7 +236,7 @@ static class Taskbar
 // The page draws the window buttons and sends them here, because only this side can reach the window.
 static class WindowControls
 {
-    const uint SysCommand = 0x112, Minimize = 0xF020, Maximize = 0xF030, Restore = 0xF120, CloseWindow = 0xF060;
+    const uint SysCommand = 0x112, Minimize = 0xF020, Maximize = 0xF030, Restore = 0xF120;
 
     [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr window);
@@ -262,10 +263,10 @@ static class WindowControls
 
     public static bool Handles(string message)
     {
-        return message == "min" || message == "max" || message == "close" || message == "state" || message == "menu" || message.StartsWith("fullscreen:");
+        return message == "min" || message == "max" || message == "close" || message == "quit" || message == "state" || message == "menu" || message.StartsWith("fullscreen:");
     }
 
-    static IntPtr SpotifyWindow()
+    public static IntPtr SpotifyWindow()
     {
         IntPtr window = IntPtr.Zero;
         foreach (Process process in Process.GetProcessesByName("Spotify"))
@@ -294,8 +295,18 @@ static class WindowControls
 
     public static void Handle(string message)
     {
+        if (message == "quit")
+        {
+            Tray.Quit();
+            return;
+        }
         IntPtr window = SpotifyWindow();
         if (window == IntPtr.Zero) return;
+        if (message == "close")
+        {
+            Tray.Hide(window);
+            return;
+        }
         if (message.StartsWith("fullscreen:"))
         {
             FillScreen(window, message.EndsWith("1"));
@@ -315,8 +326,148 @@ static class WindowControls
             Page.Send("Runtime.evaluate", call);
             return;
         }
-        uint command = message == "min" ? Minimize : message == "close" ? CloseWindow : IsZoomed(window) ? Restore : Maximize;
+        uint command = message == "min" ? Minimize : IsZoomed(window) ? Restore : Maximize;
         PostMessage(window, SysCommand, (IntPtr)command, IntPtr.Zero);
+    }
+}
+
+// Closing puts Meloir in a tray icon of its own: Spotify's tray icon doesn't bring the window back.
+// The icon, its menu, or starting Meloir again from a shortcut shows the window. Quit ends Spotify.
+static class Tray
+{
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
+
+    const int HideWindow = 0, ShowWindowNormal = 5, RestoreWindow = 9, QuitWaitMs = 5000, StartWaitMs = 15000, StartStepMs = 100;
+    public const string OpenSignal = "Local\\MeloirOpen";
+
+    public static Cdp Page;
+    static System.Windows.Forms.NotifyIcon icon;
+    static System.Windows.Forms.Control ui;
+    static IntPtr hidden;
+
+    public static void Start()
+    {
+        ManualResetEvent ready = new ManualResetEvent(false);
+        Thread thread = new Thread(() =>
+        {
+            ui = new System.Windows.Forms.Control();
+            ui.CreateControl();
+            IntPtr made = ui.Handle;
+            System.Windows.Forms.ContextMenuStrip menu = new System.Windows.Forms.ContextMenuStrip();
+            menu.Items.Add("Open Meloir", null, (s, e) => Open());
+            menu.Items.Add("Quit", null, (s, e) => Quit());
+            icon = new System.Windows.Forms.NotifyIcon();
+            icon.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location);
+            icon.Text = "Meloir";
+            icon.ContextMenuStrip = menu;
+            icon.MouseClick += (s, e) => { if (e.Button == System.Windows.Forms.MouseButtons.Left) Open(); };
+            ready.Set();
+            System.Windows.Forms.Application.Run();
+        });
+        thread.IsBackground = true;
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        ready.WaitOne();
+
+        // A second Meloir started from a shortcut only asks this one to show its window.
+        Thread listener = new Thread(() =>
+        {
+            using (EventWaitHandle signal = new EventWaitHandle(false, EventResetMode.AutoReset, OpenSignal))
+                while (signal.WaitOne()) Open();
+        });
+        listener.IsBackground = true;
+        listener.Start();
+    }
+
+    static void OnUi(Action action)
+    {
+        try { ui.BeginInvoke(action); } catch (Exception) { }
+    }
+
+    public static void Hide(IntPtr window)
+    {
+        hidden = window;
+        ShowWindow(window, HideWindow);
+        OnUi(() => icon.Visible = true);
+    }
+
+    public static void Open()
+    {
+        IntPtr window = hidden != IntPtr.Zero ? hidden : WindowControls.SpotifyWindow();
+        if (window == IntPtr.Zero) return;
+        hidden = IntPtr.Zero;
+        ShowWindow(window, IsIconic(window) ? RestoreWindow : ShowWindowNormal);
+        SetForegroundWindow(window);
+        OnUi(() => icon.Visible = false);
+    }
+
+    // Spotify ends itself properly when its own page asks, and is stopped if it doesn't.
+    public static void Quit()
+    {
+        OnUi(() => icon.Visible = false);
+        Dictionary<string, object> call = new Dictionary<string, object>();
+        call["expression"] = "window.__meloir && window.__meloir.services.control._lifecycleClient.shutdown()";
+        try { Page.Send("Runtime.evaluate", call); } catch (Exception) { }
+        Thread stopper = new Thread(() =>
+        {
+            Thread.Sleep(QuitWaitMs);
+            foreach (Process process in Process.GetProcessesByName("Spotify"))
+                try { process.Kill(); } catch (Exception) { }
+        });
+        stopper.IsBackground = true;
+        stopper.Start();
+    }
+
+    public static void Stop()
+    {
+        OnUi(() => icon.Visible = false);
+    }
+
+    // For starting in the tray: Spotify shows its window as soon as it starts, so it is hidden once it appears.
+    public static void HideWhenShown()
+    {
+        for (int waited = 0; waited < StartWaitMs; waited += StartStepMs)
+        {
+            IntPtr window = WindowControls.SpotifyWindow();
+            if (window != IntPtr.Zero && IsWindowVisible(window)) { Hide(window); return; }
+            Thread.Sleep(StartStepMs);
+        }
+    }
+}
+
+// Starting with Windows is a value under the user's Run key, which only this side can write.
+static class Startup
+{
+    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run", Name = "Meloir", TrayFlag = "--tray";
+
+    // "off", "open" or "tray".
+    public static string Current()
+    {
+        try
+        {
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey))
+            {
+                string value = key == null ? null : key.GetValue(Name) as string;
+                return value == null ? "off" : value.Contains(TrayFlag) ? "tray" : "open";
+            }
+        }
+        catch (Exception) { return "off"; }
+    }
+
+    public static void Handle(string mode)
+    {
+        try
+        {
+            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RunKey))
+            {
+                if (mode == "off") key.DeleteValue(Name, false);
+                else key.SetValue(Name, "\"" + Assembly.GetExecutingAssembly().Location + "\"" + (mode == "tray" ? " " + TrayFlag : ""));
+            }
+        }
+        catch (Exception) { }
     }
 }
 
@@ -649,7 +800,7 @@ static class Program
 
     static string Source()
     {
-        StringBuilder source = new StringBuilder("window.meloirNative = true;\nwindow.meloirVersion = '" + Updater.Release + "';\nwindow.meloirSavedPrefs = " + LoadPrefs() + ";\n");
+        StringBuilder source = new StringBuilder("window.meloirNative = true;\nwindow.meloirVersion = '" + Updater.Release + "';\nwindow.meloirStartup = '" + Startup.Current() + "';\nwindow.meloirSavedPrefs = " + LoadPrefs() + ";\n");
         Assembly assembly = Assembly.GetExecutingAssembly();
         using (StreamReader reader = new StreamReader(assembly.GetManifestResourceStream("CHANGELOG.md"), Encoding.UTF8))
             source.Append("window.meloirChangelog = ").Append(new JavaScriptSerializer().Serialize(reader.ReadToEnd())).Append(";\n");
@@ -704,7 +855,13 @@ static class Program
         bool created;
         using (Mutex single = new Mutex(true, "Local\\MeloirApp", out created))
         {
-            if (!created) return 0;
+            if (!created)
+            {
+                // Meloir is already running, maybe in the tray: it shows its window instead.
+                try { using (EventWaitHandle signal = EventWaitHandle.OpenExisting(Tray.OpenSignal)) signal.Set(); }
+                catch (Exception) { }
+                return 0;
+            }
             return Run(args);
         }
     }
@@ -741,9 +898,12 @@ static class Program
             else if (message.StartsWith("discord:")) DiscordStatus.Handle(message.Substring(8));
             else if (WindowControls.Handles(message)) WindowControls.Handle(message);
             else if (message.StartsWith("copy:")) CopyText(message.Substring(5));
+            else if (message.StartsWith("startup:")) Startup.Handle(message.Substring(8));
         };
         Updater.Page = cdp;
         WindowControls.Page = cdp;
+        Tray.Page = cdp;
+        Tray.Start();
         Updater.TestFeed = Option(args, "--update-feed");
         DiscordStatus.TestId = Option(args, "--discord-id");
         cdp.Connect(page);
@@ -763,6 +923,7 @@ static class Program
         cdp.Send("Page.setBypassCSP", enabled);
         cdp.Send("Page.addScriptToEvaluateOnNewDocument", script);
         cdp.Send("Page.reload");
+        if (Array.IndexOf(args, "--tray") >= 0) Tray.HideWhenShown();
 
         string probe = Option(args, "--probe");
         if (probe != null)
@@ -772,6 +933,7 @@ static class Program
         }
 
         pump.Join();
+        Tray.Stop();
         return 0;
     }
 

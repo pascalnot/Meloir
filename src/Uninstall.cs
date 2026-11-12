@@ -31,6 +31,8 @@ static class Program
         foreach (string link in new[] { Path.Combine(desktop, "Meloir.lnk"), Path.Combine(menu, "Meloir.lnk") })
             if (File.Exists(link)) File.Delete(link);
         Registry.CurrentUser.DeleteSubKeyTree(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Meloir", false);
+        using (RegistryKey run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
+            if (run != null) run.DeleteValue("Meloir", false);
         string data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Meloir");
         string updates = Path.Combine(data, "update");
         // The settings with their backup and leftovers, and the error log: only Meloir's own files.
