@@ -16,7 +16,7 @@
   const STATS_RANGES = [['week', '7 days', 7], ['month', '30 days', 30], ['all', 'All time', 0]];
   const SHORTCUTS = [['Space', 'Play or pause'], ['F', 'Focus mode'], ['L', 'Lyrics in focus mode'], ['Q', 'Queue'], ['Ctrl+K', 'Search'],
     ['Ctrl+F', 'Filter songs'], ['Alt+Left', 'Back'], ['Alt+Right', 'Forward'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
-  const PAGES_KEPT = 50, FILTERED_LIST_URI = 'spotify:internal:meloir', MELOIR_LINK = 'https://github.com/pascalnot/Meloir', DISCORD_MAX_TEXT = 128, DISCORD_SEEK_MS = 3000, SETTINGS_JUMP_MS = 900, SETTINGS_TOP_PX = 12, SETTINGS_ROW_PX = 26, SETTINGS_GLIDE_MS = 70, SETTINGS_REACHED_PX = 2;
+  const PAGES_KEPT = 50, FILTERED_LIST_URI = 'spotify:internal:meloir', MELOIR_LINK = 'https://github.com/pascalnot/Meloir', DISCORD_MAX_TEXT = 128, DISCORD_SEEK_MS = 3000, SETTINGS_JUMP_MS = 900, SETTINGS_TOP_PX = 12, SETTINGS_ROW_PX = 26, SETTINGS_GLIDE_MS = 70;
   const BEAT_FADE_MS = 180, DROP_FADE_MS = 800, BEAT_JUMP_MS = 1000;
   const MIN_IDLE_SECONDS = 15, MAX_IDLE_SECONDS = 300, MAX_TILT_DEGREES = 5, QUEUE_LENGTH = 40, QUEUE_REFRESH_MS = 2500, SCROLLBAR_NEAR_PX = 72;
   const COVER_FADE_MS = 700, MELOIR_BAR_HEIGHT = 36, SPOTIFY_BAR_HEIGHT = 64, MAX_REVEAL_STAGGER = 10, ROW_SHOWN_AT = 0.5, CARD_SHOWN_AT = 0.2, LYRICS_RETRY_MS = 8000;
@@ -1436,8 +1436,11 @@
         h('div', { className: 'set' },
           h('div', { className: 'line' }, h('b', {}, 'AutoMix'), autoMix),
           h('p', {}, 'Spotify\'s own mixing between songs. It may need Premium.')),
-        setting('Play when Meloir opens', null, prefSwitch('playOnOpen', 'Play when Meloir opens')),
+
+        h('h2', {}, 'Startup'),
         ...(window.meloirNative ? startupSettings() : []),
+        setting('Play when Meloir opens', null, prefSwitch('playOnOpen', 'Play when Meloir opens')),
+        setting('Open in focus mode', null, prefSwitch('focusOnOpen', 'Open in focus mode')),
 
         h('h2', {}, 'Sound'),
         h('div', { className: 'set' },
@@ -1469,7 +1472,6 @@
           glowSwitch('Drops', 'The line in focus mode flashes where the song gets clearly louder.', 'dropGlow')),
 
         h('h2', {}, 'Focus mode'),
-        setting('Open in focus mode', null, prefSwitch('focusOnOpen', 'Open in focus mode')),
         setting('Cover tilt', 'The cover leans toward the mouse in focus mode.', prefSwitch('coverTilt', 'Cover tilt', applyLook)),
         h('div', { className: 'set' },
           h('div', { className: 'line' }, h('b', {}, 'Blur behind the cover'), blurValue),
@@ -1573,17 +1575,17 @@
         }
         place();
         if (held) return;
-        // The last sections can't reach the top, so the line runs down the page as the end nears.
-        const scrollable = main.scrollHeight - main.clientHeight;
-        const nearEnd = Math.min(main.clientHeight, scrollable);
-        const left = scrollable - main.scrollTop;
-        const toEnd = nearEnd > 0 ? Math.max(0, 1 - left / nearEnd) : 0;
+        // The section that fills most of the view is the one marked.
         const area = main.getBoundingClientRect();
-        const reached = sections.filter((section, i) => {
-          const slot = topSlot(area, i);
-          return centre(section) <= slot + SETTINGS_REACHED_PX + (area.bottom - slot) * toEnd;
+        const end = body.getBoundingClientRect().bottom;
+        let most = 0, shownMost = -Infinity;
+        sections.forEach((section, i) => {
+          const top = section.getBoundingClientRect().top;
+          const bottom = sections[i + 1] ? sections[i + 1].getBoundingClientRect().top : end;
+          const shown = Math.min(bottom, area.bottom) - Math.max(top, area.top);
+          if (shown > shownMost) { shownMost = shown; most = i; }
         });
-        select(Math.max(0, reached.length - 1));
+        select(most);
       };
       main.addEventListener('scroll', follow, { passive: true });
       main.addEventListener('animationend', place);

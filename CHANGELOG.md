@@ -9,7 +9,7 @@ What changed in each version of Meloir, newest first.
 ### New
 
 - **Back and forward.** Arrows next to the menu in the title bar, Alt+Left and Alt+Right, or the mouse's side buttons. Each page comes back where you had scrolled to.
-- **Start with Windows.** In Settings → Playback, optionally starting hidden in the tray.
+- **Startup settings.** A new Settings section for how Meloir opens: start with Windows, optionally hidden in the tray, play right away, or open in focus mode.
 - **Pinned playlists.** Right-click a playlist in the sidebar to keep it at the top.
 - **Sort songs.** Playlists and Liked Songs sort by title, artist, album, length or when songs were added. Play follows the order shown.
 - **Ad breaks blocked.** Settings → Ads counts every ad break Meloir stopped, for good instead of per session.
