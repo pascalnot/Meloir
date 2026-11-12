@@ -466,11 +466,8 @@
       opacity: 0; transition: opacity .3s, transform .3s var(--ease); }
     #focus.awake .fctl { opacity: 1; transform: translate(-50%, 0); }
     #focus.asleep { cursor: none; }
-    /* A beat is a quick tick of the line. The bass thumps as light rising from the bottom, and thickens the line a little. */
-    .fline { position: absolute; left: 0; bottom: 0; height: calc(2px + 2px * var(--bass, 0)); background: var(--fg); opacity: calc(.7 + .3 * max(var(--beat, 0), var(--bass, 0))); }
+    .fline { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--fg); opacity: calc(.7 + .3 * var(--beat, 0)); }
     .fline::after { content: ''; position: absolute; inset: 0; box-shadow: 0 0 16px 2px #fff; opacity: var(--beat, 0); }
-    .fline::before { content: ''; position: absolute; left: 0; bottom: 0; width: 100vw; height: 46vh; pointer-events: none;
-      background: radial-gradient(70% 100% at 50% 100%, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05) 45%, transparent 75%); opacity: var(--bass, 0); }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -1400,7 +1397,7 @@
         h('div', { className: 'set' },
           glowSwitch('Cursor', 'A soft light that follows the mouse.', 'cursorGlow', applyLook),
           glowSwitch('Beats', 'The line in focus mode pulses on strong beats.', 'beatGlow'),
-          glowSwitch('Bass', 'Light rises from the bottom of focus mode with the bass.', 'bassGlow')),
+          glowSwitch('Bass', 'The line in focus mode pulses with the bass.', 'bassGlow')),
 
         h('h2', {}, 'Focus mode'),
         setting('Open in focus mode', null, prefSwitch('focusOnOpen', 'Open in focus mode')),
@@ -1915,8 +1912,8 @@
       });
     };
 
-    // The line lights on each beat that Spotify's analysis marks as strong, and light rises with the bass.
-    let beats = [], beatsFor = null, nextBeat = 0, beatLevel = 0, bassLevel = 0, beatFrame = 0, beatPosition = -Infinity, beatShown = '', bassShown = '';
+    // The line lights on each beat that Spotify's analysis marks as strong, and with the bass.
+    let beats = [], beatsFor = null, nextBeat = 0, beatLevel = 0, bassLevel = 0, beatFrame = 0, beatPosition = -Infinity, beatShown = '';
     const pulse = s => {
       const { beatGlow, bassGlow } = meloir.prefs;
       const now = performance.now(), on = (beatGlow || bassGlow) && !calm();
@@ -1943,9 +1940,8 @@
         if (bassGlow) bassLevel = Math.max(bassLevel, beats[nextBeat].bass);
         if (beatGlow) beatLevel = Math.max(beatLevel, beats[nextBeat].level);
       }
-      const shown = (on ? beatLevel : 0).toFixed(2), shownBass = (on ? bassLevel : 0).toFixed(2);
+      const shown = (on ? Math.max(beatLevel, bassLevel) : 0).toFixed(2);
       if (shown !== beatShown) focusProgress.style.setProperty('--beat', beatShown = shown);
-      if (shownBass !== bassShown) focusProgress.style.setProperty('--bass', bassShown = shownBass);
     };
 
     const focusTick = () => {
