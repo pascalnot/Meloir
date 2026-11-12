@@ -1444,7 +1444,10 @@
 
         h('h2', {}, 'Ads'),
         h('div', { className: 'set' },
-          h('div', { className: 'line' }, h('b', {}, 'Ads muted this session'), h('span', { className: 'value' }, String(meloir.stats.adsMuted)))),
+          h('div', { className: 'line' }, h('b', {}, 'Ad breaks blocked'), h('span', { className: 'value' }, meloir.prefs.adsBlocked.toLocaleString('en-US'))),
+          h('p', {}, 'Each time Spotify tried to start ads, counted once since '
+            + new Date(meloir.prefs.adsBlockedSince || Date.now()).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+            + '. ' + meloir.stats.adBreaks + ' this session.')),
 
         h('h2', {}, 'About'),
         setting('Keyboard shortcuts', null, h('button', { className: 'chip', onclick: () => toggleKeys() }, 'Show')),

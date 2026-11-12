@@ -39,13 +39,13 @@
     };
   };
 
-  const meloir = window.__meloir = { ready: false, services: null, stats: { adsMuted: 0, managersOff: [], slots: [], slotsCleared: 0, lastAd: null } };
+  const meloir = window.__meloir = { ready: false, services: null, stats: { adsMuted: 0, adBreaks: 0, managersOff: [], slots: [], slotsCleared: 0, lastAd: null } };
 
   // Meloir.exe keeps these in a file: it hands them over at startup and saves every change.
   meloir.prefs = {
     smooth: true, smoothSeconds: 4, playOnOpen: false, focusOnOpen: false, compact: false, still: false, showLyrics: true,
     cursorGlow: true, idleFade: true, idleSeconds: 60, coverTilt: true, spotifyLyrics: false, beatGlow: true, dropGlow: true,
-    theme: 'dark', history: [], recentOpen: false, unmuteVolume: 50, discord: false, discordButton: true, coverBackdrop: false, coverBackdropLevel: 40, seenVersion: '', statsRange: 'all', searches: [], genres: {}, focusBlur: 22, focusBlurSize: 100, stats: { since: 0, ms: 0, plays: 0, tracks: {}, artists: {}, days: {} },
+    theme: 'dark', history: [], recentOpen: false, unmuteVolume: 50, discord: false, discordButton: true, coverBackdrop: false, coverBackdropLevel: 40, adsBlocked: 0, adsBlockedSince: 0, seenVersion: '', statsRange: 'all', searches: [], genres: {}, focusBlur: 22, focusBlurSize: 100, stats: { since: 0, ms: 0, plays: 0, tracks: {}, artists: {}, days: {} },
   };
   Object.assign(meloir.prefs, window.meloirSavedPrefs);
   meloir.setPref = (name, value) => {
@@ -176,7 +176,18 @@
   // are switched off, its ad slots are emptied and disabled, and anything that still plays as an
   // ad is muted. Its Premium overrides are left out on purpose: the account stays reported as Free.
   const SLOT_FALLBACK = ['stream', 'preroll', 'leaderboard', 'hpto'];
-  const NEVER_PLAYTIME_SECONDS = -100000000000, SLOT_RETRIES = 5, SLOT_RETRY_MS = 1000;
+  const NEVER_PLAYTIME_SECONDS = -100000000000, SLOT_RETRIES = 5, SLOT_RETRY_MS = 1000, STARTUP_QUIET_MS = 60000, AD_BREAK_MS = 30000;
+
+  // Each ad break Spotify tries to start is counted once, kept for good. The slots Meloir empties
+  // itself at startup answer with messages of their own, so those are left out.
+  let lastBreak = 0;
+  const countAdBreak = () => {
+    const now = Date.now();
+    if (performance.now() < STARTUP_QUIET_MS || now - lastBreak < AD_BREAK_MS) return;
+    lastBreak = now;
+    meloir.stats.adBreaks++;
+    meloir.setPref('adsBlocked', (meloir.prefs.adsBlocked || 0) + 1);
+  };
   let watchingAccount = false;
   const AD_MODULE = /spotify\.ads\.esperanto\.proto\.Slots/;
 
@@ -266,7 +277,7 @@
     meloir.stats.slots = ids;
     for (const id of ids) {
       try {
-        if (connector) connector.subscribeToSlot(id, event => { empty((event && event.adSlotEvent && event.adSlotEvent.slotId) || id); adsOff(); });
+        if (connector) connector.subscribeToSlot(id, event => { countAdBreak(); empty((event && event.adSlotEvent && event.adSlotEvent.slotId) || id); adsOff(); });
       } catch (e) { /* the slot is still emptied below */ }
       await empty(id);
     }
@@ -301,6 +312,7 @@
     mutedForAd = ad;
     if (ad) {
       meloir.stats.adsMuted++;
+      countAdBreak();
       meloir.stats.lastAd = { sign: adSign(state.item), at: new Date().toISOString(), seconds: Math.round((state.duration || 0) / 1000) };
     }
     const mute = meloir.services.playback.getMuteHelper();
@@ -315,6 +327,7 @@
     clearInterval(boot);
     meloir.services = services;
     meloir.ready = true;
+    if (!meloir.prefs.adsBlockedSince) meloir.setPref('adsBlockedSince', Date.now());
     adsOff();
     blockSlots().catch(() => {});
     applyConfig().catch(() => {});
