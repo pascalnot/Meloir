@@ -17,7 +17,7 @@
     ['Alternative', /alternative|indie/i], ['Dance', /dance|disco|garage/i], ['Electronic', /electr|edm|ambient|downtempo/i], ['Country', /country/i], ['Jazz', /jazz/i], ['Classical', /classical|opera/i], ['Reggae', /reggae|dancehall/i], ['Latin', /latin|reggaeton/i]];
   const HOME_WAIT_MS = 10000, MIN_SHELF_ITEMS = 3, MAX_SHELVES = 8, HOME_SECTIONS = ['HomeGenericSectionData', 'HomeFeedBaselineSectionData'];
   const MIN_LIKED_ALBUMS = 8, MAX_SINGLE_ALBUMS = 60;
-  const BEAT_RANGE_DB = 15, BEAT_EARLY_SECONDS = 0.05, MIN_BEAT_LEVEL = 0.2, MIN_BASS_LEVEL = 0.15, DARK_FROM = 0.15, DARK_TO = 0.85, SONG_RANGE_DB = 24;
+  const BEAT_RANGE_DB = 15, BEAT_EARLY_SECONDS = 0.05, MIN_BEAT_LEVEL = 0.2, MIN_BASS_LEVEL = 0.15, SONG_RANGE_DB = 24, LOUD_HIT_DB = 15, HIT_FROM = 0.5, HIT_FULL = 0.9;
   const beatCache = new Map(), genreQueue = new Map();
   let genreRunning = false, genreWatcher = () => {};
   const MIX_LENGTH = 50, MIX_RELEASES = 3, MIX_NEAREST_ARTISTS = 16, MIX_SIMILAR_ARTISTS = 8, MIX_SONGS_EACH = 3;
@@ -415,8 +415,8 @@
     },
 
     // Beats worth lighting up for, from Spotify's analysis of the song. A beat counts by how loud it
-    // hits and how loud its section is. Its bass is how dark its sound is, among the song's own sounds,
-    // times how hard it hits.
+    // hits and how loud its section is. A hit is how sharply a sound starts and how close it comes to the
+    // song's loudest moments, which in most songs means the kick and the bass.
     beats: async uri => {
       if (beatCache.has(uri)) return beatCache.get(uri);
       const response = await meloir.spotifyFetch('https://spclient.wg.spotify.com/audio-attributes/v1/audio-analysis/' + idOf(uri) + '?format=json');
@@ -425,26 +425,26 @@
       const levels = sections.map(section => section.loudness);
       const quietest = Math.min(...levels), range = (Math.max(...levels) - quietest) || 1;
       const top = Math.max(...segments.map(segment => segment.loudness_max));
-      // Spotify's second timbre number is brightness: low means the sound sits in the bass.
-      const bright = segments.map(segment => segment.timbre[1]).sort((a, b) => a - b);
-      const darkest = bright[Math.floor(bright.length * DARK_FROM)], lightest = bright[Math.floor(bright.length * DARK_TO)];
+      const force = s => Math.max(0, s.loudness_max - s.loudness_start) * Math.min(1, Math.max(0, 1 + (s.loudness_max - top) / LOUD_HIT_DB));
+      const forces = segments.map(force).sort((a, b) => a - b);
+      const usual = forces[Math.floor(forces.length * HIT_FROM)], hardest = forces[Math.floor(forces.length * HIT_FULL)];
+      const hardness = s => Math.min(1, Math.max(0, (force(s) - usual) / ((hardest - usual) || 1)));
       let segment = 0, section = 0;
       const hits = beats.map(beat => {
         while (section + 1 < sections.length && sections[section + 1].start <= beat.start) section++;
         while (segment + 1 < segments.length && segments[segment + 1].start <= beat.start - BEAT_EARLY_SECONDS) segment++;
-        let peak = -Infinity, dark = 0;
+        let peak = -Infinity, hit = 0;
         for (let i = segment; i < segments.length && segments[i].start < beat.start + beat.duration / 2; i++) {
           peak = Math.max(peak, segments[i].loudness_max);
-          dark = Math.max(dark, Math.min(1, Math.max(0, (lightest - segments[i].timbre[1]) / ((lightest - darkest) || 1))));
+          hit = Math.max(hit, hardness(segments[i]));
         }
         const strength = Math.max(0, 1 + (peak - top) / BEAT_RANGE_DB);
-        return { at: beat.start * 1000, bass: dark * dark * strength, level: strength * strength * (.3 + .7 * (levels[section] - quietest) / range) };
+        return { at: beat.start * 1000, bass: hit, level: strength * strength * (.3 + .7 * (levels[section] - quietest) / range) };
       }).filter(hit => hit.level >= MIN_BEAT_LEVEL || hit.bass >= MIN_BASS_LEVEL);
       // Between the beats, how loud and how deep the song is at each moment, at the peak of every short sound.
       hits.flow = segments.map(s => {
         const loud = Math.min(1, Math.max(0, 1 + (s.loudness_max - top) / SONG_RANGE_DB));
-        const dark = Math.min(1, Math.max(0, (lightest - s.timbre[1]) / ((lightest - darkest) || 1)));
-        return { at: (s.start + s.loudness_max_time) * 1000, loud: loud * loud, bass: dark * loud * loud };
+        return { at: (s.start + s.loudness_max_time) * 1000, loud: loud * loud, bass: hardness(s) };
       });
       beatCache.set(uri, hits);
       return hits;

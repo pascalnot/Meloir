@@ -1397,7 +1397,7 @@
         h('div', { className: 'set' },
           glowSwitch('Cursor', 'A soft light that follows the mouse.', 'cursorGlow', applyLook),
           glowSwitch('Beats', 'The line in focus mode pulses on strong beats.', 'beatGlow'),
-          glowSwitch('Bass', 'The line in focus mode pulses with the bass.', 'bassGlow')),
+          glowSwitch('Bass', 'The line in focus mode pulses on the loudest, hardest hits, like the kick and bass.', 'bassGlow')),
 
         h('h2', {}, 'Focus mode'),
         setting('Open in focus mode', null, prefSwitch('focusOnOpen', 'Open in focus mode')),
