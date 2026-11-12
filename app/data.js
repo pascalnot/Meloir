@@ -17,8 +17,7 @@
     ['Alternative', /alternative|indie/i], ['Dance', /dance|disco|garage/i], ['Electronic', /electr|edm|ambient|downtempo/i], ['Country', /country/i], ['Jazz', /jazz/i], ['Classical', /classical|opera/i], ['Reggae', /reggae|dancehall/i], ['Latin', /latin|reggaeton/i]];
   const HOME_WAIT_MS = 10000, MIN_SHELF_ITEMS = 3, MAX_SHELVES = 8, HOME_SECTIONS = ['HomeGenericSectionData', 'HomeFeedBaselineSectionData'];
   const MIN_LIKED_ALBUMS = 8, MAX_SINGLE_ALBUMS = 60;
-  const BEAT_RANGE_DB = 15, BEAT_EARLY_SECONDS = 0.05, MIN_BEAT_LEVEL = 0.2, MIN_BASS_LEVEL = 0.15, SONG_RANGE_DB = 24, LOUD_HIT_DB = 15, HIT_FROM = 0.5, HIT_FULL = 0.9;
-  const DULL_SHARE = 0.4, OFF_GRID_SHARE = 0.3, GRID_MS = 50, BAR_LIFT = 1.3, BEAT_IN_BAR = 0.85, DROP_RISE_DB = 3, BUILD_MS = 4000;
+  const DROP_RISE_DB = 2.5, BEAT_RANGE_DB = 15, BEAT_EARLY_SECONDS = 0.05, MIN_BEAT_LEVEL = 0.2;
   const beatCache = new Map(), genreQueue = new Map();
   let genreRunning = false, genreWatcher = () => {};
   const MIX_LENGTH = 50, MIX_RELEASES = 3, MIX_NEAREST_ARTISTS = 16, MIX_SIMILAR_ARTISTS = 8, MIX_SONGS_EACH = 3;
@@ -416,55 +415,26 @@
     },
 
     // Beats worth lighting up for, from Spotify's analysis of the song. A beat counts by how loud it
-    // hits and how loud its section is, and the first beat of a bar a little more. A hit is how sharply a
-    // sound starts and how close it comes to the song's loudest moments, favouring dull, deep sounds and
-    // those on the beat grid: in most songs, the kick and the bass. A section much louder than the one
-    // before is a drop, and the few seconds before it build up to it.
+    // hits and how loud its section is, and a section that gets clearly louder starts with a drop.
     beats: async uri => {
       if (beatCache.has(uri)) return beatCache.get(uri);
       const response = await meloir.spotifyFetch('https://spclient.wg.spotify.com/audio-attributes/v1/audio-analysis/' + idOf(uri) + '?format=json');
       if (!response.ok) throw new Error('Spotify answered ' + response.status);
-      const { beats, bars = [], tatums = [], sections, segments } = await response.json();
+      const { beats, sections, segments } = await response.json();
       const levels = sections.map(section => section.loudness);
       const quietest = Math.min(...levels), range = (Math.max(...levels) - quietest) || 1;
       const top = Math.max(...segments.map(segment => segment.loudness_max));
-      const force = s => Math.max(0, s.loudness_max - s.loudness_start) * Math.min(1, Math.max(0, 1 + (s.loudness_max - top) / LOUD_HIT_DB));
-      const forces = segments.map(force).sort((a, b) => a - b);
-      const usual = forces[Math.floor(forces.length * HIT_FROM)], hardest = forces[Math.floor(forces.length * HIT_FULL)];
-      // Spotify's second timbre number is brightness: the duller of the song's own sounds count more.
-      const bright = segments.map(s => s.timbre[1]).sort((a, b) => a - b);
-      const rank = new Map(bright.map((value, i) => [value, i]));
-      const dullness = s => 1 - rank.get(s.timbre[1]) / ((bright.length - 1) || 1);
-      const grid = [...beats, ...tatums].map(b => b.start).sort((a, b) => a - b);
-      const onGrid = time => {
-        let low = 0, high = grid.length - 1;
-        while (low < high) { const mid = (low + high) >> 1; if (grid[mid] < time) low = mid + 1; else high = mid; }
-        return [grid[low - 1], grid[low]].some(t => t !== undefined && Math.abs(t - time) * 1000 <= GRID_MS);
-      };
-      const hardness = s => Math.min(1, Math.max(0, (force(s) - usual) / ((hardest - usual) || 1)))
-        * (1 - DULL_SHARE + DULL_SHARE * dullness(s)) * (onGrid(s.start) ? 1 : OFF_GRID_SHARE);
-      const barStarts = bars.map(bar => bar.start);
+      const drops = sections.filter((section, i) => i && section.loudness - levels[i - 1] >= DROP_RISE_DB).map(section => section.start);
       let segment = 0, section = 0;
       const hits = beats.map(beat => {
         while (section + 1 < sections.length && sections[section + 1].start <= beat.start) section++;
         while (segment + 1 < segments.length && segments[segment + 1].start <= beat.start - BEAT_EARLY_SECONDS) segment++;
-        let peak = -Infinity, hit = 0;
-        for (let i = segment; i < segments.length && segments[i].start < beat.start + beat.duration / 2; i++) {
-          peak = Math.max(peak, segments[i].loudness_max);
-          hit = Math.max(hit, hardness(segments[i]));
-        }
+        let peak = -Infinity;
+        for (let i = segment; i < segments.length && segments[i].start < beat.start + beat.duration / 2; i++) peak = Math.max(peak, segments[i].loudness_max);
         const strength = Math.max(0, 1 + (peak - top) / BEAT_RANGE_DB);
-        const firstInBar = barStarts.some(start => Math.abs(start - beat.start) <= beat.duration / 2);
-        const level = strength * strength * (.3 + .7 * (levels[section] - quietest) / range) * (firstInBar ? BAR_LIFT : BEAT_IN_BAR);
-        return { at: beat.start * 1000, bass: hit, level: Math.min(1, level) };
-      }).filter(hit => hit.level >= MIN_BEAT_LEVEL || hit.bass >= MIN_BASS_LEVEL);
-      // Between the beats, how loud and how deep the song is at each moment, at the peak of every short sound.
-      hits.flow = segments.map(s => {
-        const loud = Math.min(1, Math.max(0, 1 + (s.loudness_max - top) / SONG_RANGE_DB));
-        return { at: (s.start + s.loudness_max_time) * 1000, loud: loud * loud, bass: hardness(s) };
-      });
-      hits.drops = sections.filter((section, i) => i && section.loudness - levels[i - 1] >= DROP_RISE_DB)
-        .map(section => ({ at: section.start * 1000, from: Math.max(0, section.start * 1000 - BUILD_MS) }));
+        const drop = drops.some(start => Math.abs(beat.start - start) <= beat.duration / 2);
+        return { at: beat.start * 1000, drop, level: strength * strength * (.3 + .7 * (levels[section] - quietest) / range) };
+      }).filter(hit => hit.drop || hit.level >= MIN_BEAT_LEVEL);
       beatCache.set(uri, hits);
       return hits;
     },
