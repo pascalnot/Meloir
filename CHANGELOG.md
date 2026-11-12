@@ -2,6 +2,19 @@
 
 What changed in each version of Meloir, newest first.
 
+## 1.5.0
+
+*Not released yet*
+
+### New
+
+- **Spotify's lyrics.** A switch in Settings → Focus mode that always shows the lyrics Spotify has, timed line by line. Other services are only asked when Spotify has none.
+
+### Fixed
+
+- When the next line starts before the last one is sung to the end, both stay lit instead of the first one being skipped.
+- Words from LRCLIB no longer light up slowly across a pause.
+
 ## 1.4.0
 
 *11 November 2026*

@@ -84,7 +84,7 @@
     includePreReleases: false, includeAlbumPreReleases: false, includeEpisodeContentRatingsV2: true,
   });
 
-  const LYRICS_TIMEOUT_MS = 6000, SAME_SONG_MS = 4000, WORD_MIN_MS = 400, WORD_PACE_TIMES = 2.5;
+  const LYRICS_TIMEOUT_MS = 6000, SAME_SONG_MS = 4000, WORD_MIN_MS = 400, WORD_PACE_TIMES = 2.5, LETTER_MS = 70;
 
   // Titles and artists as letters and digits only, without accents and without the extras
   // Spotify adds, such as "- 2011 Remaster" or "(feat. X)".
@@ -445,7 +445,7 @@
 
     timedLyrics: wordLyrics,
 
-    // Spotify's own lyrics, timed per line.
+    // Spotify's own lyrics, timed per line. A line is sung at about the usual pace, never past the next one.
     lyrics: async (uri, coverUrl) => {
       if (!coverUrl) return null;
       const url = 'https://spclient.wg.spotify.com/color-lyrics/v2/track/' + idOf(uri) + '/image/' + encodeURIComponent(coverUrl)
@@ -455,11 +455,13 @@
       if (!response.ok) throw new Error('Spotify answered ' + response.status);
       const { lyrics } = await response.json();
       if (!lyrics || !lyrics.lines || !lyrics.lines.length) return null;
-      return {
-        synced: lyrics.syncType !== 'UNSYNCED',
-        lines: lyrics.lines.filter(line => line.words && line.words.trim())
-          .map(line => ({ start: Number(line.startTimeMs), text: line.words })),
-      };
+      const lines = lyrics.lines.filter(line => line.words && line.words.trim())
+        .map(line => ({ start: Number(line.startTimeMs), text: line.words }));
+      lines.forEach((line, i) => {
+        line.end = line.start + line.text.length * LETTER_MS;
+        if (lines[i + 1]) line.end = Math.min(line.end, lines[i + 1].start);
+      });
+      return { synced: lyrics.syncType !== 'UNSYNCED', lines };
     },
 
     // Liked Songs is a playlist whose id no simple call gives, so the page's own service reads it.
