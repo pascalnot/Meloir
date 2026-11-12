@@ -17,7 +17,7 @@
   const SHORTCUTS = [['Space', 'Play or pause'], ['F', 'Focus mode'], ['L', 'Lyrics in focus mode'], ['Q', 'Queue'], ['Ctrl+K', 'Search'],
     ['Ctrl+F', 'Filter songs'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
   const FILTERED_LIST_URI = 'spotify:internal:meloir', MELOIR_LINK = 'https://github.com/pascalnot/Meloir', DISCORD_MAX_TEXT = 128, DISCORD_SEEK_MS = 3000, SETTINGS_JUMP_MS = 900, SETTINGS_TOP_PX = 12, SETTINGS_ROW_PX = 26, SETTINGS_GLIDE_MS = 70, SETTINGS_REACHED_PX = 2;
-  const BEAT_FADE_MS = 180, BASS_FADE_MS = 420, BEAT_JUMP_MS = 1000, FLOW_RISE_MS = 60, FLOW_FALL_MS = 320, FLOW_BEAT_SHARE = 0.35, FLOW_BASS_SHARE = 0.55, BUILD_PEAK = 0.7, DROP_FADE_MS = 1200;
+  const BEAT_FADE_MS = 180, BASS_FADE_MS = 420, BEAT_JUMP_MS = 1000, FLOW_RISE_MS = 60, FLOW_FALL_MS = 320, FLOW_BEAT_SHARE = 0.2, FLOW_BASS_SHARE = 0.3, BUILD_PEAK = 0.7, DROP_FADE_MS = 1200;
   const MIN_IDLE_SECONDS = 15, MAX_IDLE_SECONDS = 300, MAX_TILT_DEGREES = 5, QUEUE_LENGTH = 40, QUEUE_REFRESH_MS = 2500, SCROLLBAR_NEAR_PX = 72;
   const COVER_FADE_MS = 700, MELOIR_BAR_HEIGHT = 36, SPOTIFY_BAR_HEIGHT = 64, MAX_REVEAL_STAGGER = 10, ROW_SHOWN_AT = 0.5, CARD_SHOWN_AT = 0.2, LYRICS_RETRY_MS = 8000;
   const COVER_MOVE_MS = 520, COVER_WAIT_MS = 170, LYRICS_FADE_OUT_MS = 170, LYRICS_WAIT_MS = 230, LYRICS_FADE_IN_MS = 380;
@@ -466,8 +466,8 @@
       opacity: 0; transition: opacity .3s, transform .3s var(--ease); }
     #focus.awake .fctl { opacity: 1; transform: translate(-50%, 0); }
     #focus.asleep { cursor: none; }
-    .fline { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--fg); opacity: calc(.7 + .3 * var(--beat, 0)); }
-    .fline::after { content: ''; position: absolute; inset: 0; box-shadow: 0 0 16px 2px #fff; opacity: var(--beat, 0); }
+    .fline { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--fg); opacity: calc(.45 + .55 * var(--beat, 0)); }
+    .fline::after { content: ''; position: absolute; inset: 0; box-shadow: 0 0 18px 3px #fff, 0 0 56px 8px rgba(255, 255, 255, .45); opacity: var(--beat, 0); }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
