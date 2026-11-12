@@ -11,13 +11,13 @@
   const SPLASH_LIMIT_MS = 15000;
   const RECENT_ON_HOME = 6, MAX_HISTORY = 30, MAX_SEARCHES = 8, KEEP_SEARCH_MS = 1500;
   const GLOW_TIGHT_GROW = 2, GLOW_WIDE_GROW = 14, GLOW_TIGHT_SOFT_PX = 12, GLOW_WIDE_SOFT_PX = 90;
-  const BACKDROP_MAX_OPACITY = 0.6, ROW_LEAVE_MS = 280, MUTE_FADE_MS = 140, UNMUTE_FADE_MS = 350, HIDDEN_BUTTONS_HEIGHT = 1, FULLSCREEN_SETTLE_MS = 350, NAV_MARK_PX = 16, TOAST_MS = 2600, DRAG_START_PX = 5, DRAG_EDGE_PX = 36, DRAG_SCROLL_PX = 8, DRAG_CLICK_MS = 100, QUEUE_SETTLE_MS = 900, GENRE_FOCUS_MS = 60;
+  const LYRICS_HOLD_LINES = 2, BACKDROP_MAX_OPACITY = 0.6, ROW_LEAVE_MS = 280, MUTE_FADE_MS = 140, UNMUTE_FADE_MS = 350, HIDDEN_BUTTONS_HEIGHT = 1, FULLSCREEN_SETTLE_MS = 350, NAV_MARK_PX = 16, TOAST_MS = 2600, DRAG_START_PX = 5, DRAG_EDGE_PX = 36, DRAG_SCROLL_PX = 8, DRAG_CLICK_MS = 100, QUEUE_SETTLE_MS = 900, GENRE_FOCUS_MS = 60;
   const PLAY_COUNTS_MS = 30000, SAVE_LISTENING_MS = 60000, MAX_STATS_SONGS = 400, STATS_TOP = 10, STATS_COUNT_MS = 900, STATS_KEEP_DAYS = 400, NEWS_DELAY_MS = 1600;
   const STATS_RANGES = [['week', '7 days', 7], ['month', '30 days', 30], ['all', 'All time', 0]];
   const SHORTCUTS = [['Space', 'Play or pause'], ['F', 'Focus mode'], ['L', 'Lyrics in focus mode'], ['Q', 'Queue'], ['Ctrl+K', 'Search'],
     ['Ctrl+F', 'Filter songs'], ['Esc', 'Close'], ['?', 'This list'], ['Ctrl+Shift+U', 'Spotify\'s own interface']];
   const FILTERED_LIST_URI = 'spotify:internal:meloir', MELOIR_LINK = 'https://github.com/pascalnot/Meloir', DISCORD_MAX_TEXT = 128, DISCORD_SEEK_MS = 3000, SETTINGS_JUMP_MS = 900, SETTINGS_TOP_PX = 12, SETTINGS_ROW_PX = 26, SETTINGS_GLIDE_MS = 70, SETTINGS_REACHED_PX = 2;
-  const BEAT_FADE_MS = 180, DROP_FADE_MS = 800, BEAT_JUMP_MS = 1000;
+  const BEAT_FADE_MS = 180, DROP_FADE_MS = 1600, BEAT_JUMP_MS = 1000;
   const MIN_IDLE_SECONDS = 15, MAX_IDLE_SECONDS = 300, MAX_TILT_DEGREES = 5, QUEUE_LENGTH = 40, QUEUE_REFRESH_MS = 2500, SCROLLBAR_NEAR_PX = 72;
   const COVER_FADE_MS = 700, MELOIR_BAR_HEIGHT = 36, SPOTIFY_BAR_HEIGHT = 64, MAX_REVEAL_STAGGER = 10, ROW_SHOWN_AT = 0.5, CARD_SHOWN_AT = 0.2, LYRICS_RETRY_MS = 8000;
   const COVER_MOVE_MS = 520, COVER_WAIT_MS = 170, LYRICS_FADE_OUT_MS = 170, LYRICS_WAIT_MS = 230, LYRICS_FADE_IN_MS = 380;
@@ -466,8 +466,11 @@
       opacity: 0; transition: opacity .3s, transform .3s var(--ease); }
     #focus.awake .fctl { opacity: 1; transform: translate(-50%, 0); }
     #focus.asleep { cursor: none; }
-    .fline { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--fg); opacity: calc(.7 + .3 * var(--beat, 0)); }
+    /* A beat is a quick tick of the line. A drop is a bigger, slower bloom, with light rising from the bottom. */
+    .fline { position: absolute; left: 0; bottom: 0; height: calc(2px + 3px * var(--drop, 0)); background: var(--fg); opacity: calc(.7 + .3 * max(var(--beat, 0), var(--drop, 0))); }
     .fline::after { content: ''; position: absolute; inset: 0; box-shadow: 0 0 16px 2px #fff; opacity: var(--beat, 0); }
+    .fline::before { content: ''; position: absolute; left: 0; bottom: 0; width: 100vw; height: 46vh; pointer-events: none;
+      background: radial-gradient(70% 100% at 50% 100%, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05) 45%, transparent 75%); opacity: var(--drop, 0); }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -1786,6 +1789,7 @@
       lyricsBox.removeAttribute('style');
       applyLyricsShown();
       activeLine = -2;
+      litLines = '';
       lyricsButton.firstChild.animate([{ transform: 'scale(.7)' }, { transform: 'scale(1)' }], { duration: 240, easing: EASE });
       if (focus.classList.contains('plain') || calm()) return;
 
@@ -1816,7 +1820,7 @@
       focusProgress);
     applyLyricsShown();
 
-    let focusOn = false, coverUrl = '', lyricsFor = null, lines = [], activeLine = -1, sleepTimer = 0;
+    let focusOn = false, coverUrl = '', lyricsFor = null, lines = [], activeLine = -1, litLines = '', sleepTimer = 0;
 
     const wake = () => {
       focus.classList.add('awake');
@@ -1852,6 +1856,7 @@
       focus.classList.toggle('plain', !data);
       lyricsBox.classList.toggle('unsynced', !!data && !data.synced);
       activeLine = -2;
+      litLines = '';
       snapLyrics = true;
       lines = [];
       focusLyrics.style.transform = '';
@@ -1861,7 +1866,7 @@
           ? line.words.map(word => ({ el: h('span', { className: 'w' }, word.text), at: word.at, end: word.end }))
           : timedWords(line.text, line.start, line.end || line.start);
         const el = h('div', { className: 'fl', onclick: () => { if (data.synced) meloir.services.player.seekTo(line.start); } }, words.map(w => w.el));
-        return { start: line.start, el, words };
+        return { start: line.start, end: Math.max(line.start, ...words.map(w => w.end)), el, words };
       });
       focusLyrics.replaceChildren(...lines.map(line => line.el));
       if (!data.synced) lines = [];
@@ -1879,6 +1884,7 @@
       // The layout stays as it is until the answers are in: only the old lines fade away.
       lines = [];
       activeLine = -2;
+      litLines = '';
       lyricsBox.getAnimations().forEach(a => a.cancel());
       const leaving = lyricsBox.animate([{ opacity: 1 }, { opacity: 0 }], { duration: calm() ? 0 : LYRICS_LEAVE_MS, easing: 'ease-out', fill: 'forwards' });
       const state = meloir.state();
@@ -1910,7 +1916,7 @@
     };
 
     // The line lights on each beat that Spotify's analysis marks as strong, and for longer on a drop.
-    let beats = [], beatsFor = null, nextBeat = 0, beatLevel = 0, beatFade = BEAT_FADE_MS, beatFrame = 0, beatPosition = -Infinity, beatShown = '';
+    let beats = [], beatsFor = null, nextBeat = 0, beatLevel = 0, dropLevel = 0, beatFrame = 0, beatPosition = -Infinity, beatShown = '', dropShown = '';
     const pulse = s => {
       const { beatGlow, dropGlow } = meloir.prefs;
       const now = performance.now(), on = (beatGlow || dropGlow) && !calm();
@@ -1929,17 +1935,17 @@
         nextBeat = ahead < 0 ? beats.length : ahead;
       }
       beatPosition = s.position;
-      beatLevel *= Math.exp(-(now - beatFrame) / beatFade);
+      beatLevel *= Math.exp(-(now - beatFrame) / BEAT_FADE_MS);
+      dropLevel *= Math.exp(-(now - beatFrame) / DROP_FADE_MS);
       beatFrame = now;
       for (; nextBeat < beats.length && beats[nextBeat].at <= s.position; nextBeat++) {
-        const drop = beats[nextBeat].drop && dropGlow;
-        const level = drop ? 1 : beats[nextBeat].level;
-        if (!on || s.isPaused || !(drop || beatGlow) || level < beatLevel) continue;
-        beatLevel = level;
-        beatFade = drop ? DROP_FADE_MS : BEAT_FADE_MS;
+        if (!on || s.isPaused) continue;
+        if (dropGlow && beats[nextBeat].drop) dropLevel = 1;
+        if (beatGlow) beatLevel = Math.max(beatLevel, beats[nextBeat].level);
       }
-      const shown = (on ? beatLevel : 0).toFixed(2);
+      const shown = (on ? beatLevel : 0).toFixed(2), shownDrop = (on ? dropLevel : 0).toFixed(2);
       if (shown !== beatShown) focusProgress.style.setProperty('--beat', beatShown = shown);
+      if (shownDrop !== dropShown) focusProgress.style.setProperty('--drop', dropShown = shownDrop);
     };
 
     const focusTick = () => {
@@ -1952,11 +1958,18 @@
       pulse(s);
       let index = -1;
       for (let i = 0; i < lines.length && lines[i].start <= s.position; i++) index = i;
-      if (index !== activeLine) {
+      // When the next line starts before the last one is sung to the end, both stay lit until it is.
+      const held = [];
+      for (let i = index - 1; i >= 0 && i >= index - LYRICS_HOLD_LINES; i--) if (s.position < lines[i].end) held.push(i);
+      const lit = held.join(',') + '|' + index;
+      if (lit !== litLines) {
+        litLines = lit;
         lines.forEach((line, i) => {
-          line.el.classList.toggle('on', i === index);
-          line.el.classList.toggle('past', i < index);
+          line.el.classList.toggle('on', i === index || held.includes(i));
+          line.el.classList.toggle('past', i < index && !held.includes(i));
         });
+      }
+      if (index !== activeLine) {
         activeLine = index;
         const target = lines[Math.max(0, index)];
         if (target) {
@@ -1970,8 +1983,8 @@
           }
         }
       }
-      if (index >= 0) {
-        for (const word of lines[index].words) {
+      for (const i of index >= 0 ? [...held, index] : []) {
+        for (const word of lines[i].words) {
           const swept = Math.round(Math.min(1, Math.max(0, (s.position - word.at) / Math.max(1, word.end - word.at))) * 100);
           if (word.swept === swept) continue;
           word.swept = swept;
@@ -2013,6 +2026,7 @@
       }
       syncLyrics();
       activeLine = -2;
+      litLines = '';
       wake();
       requestAnimationFrame(focusTick);
     };
