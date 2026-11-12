@@ -17,7 +17,7 @@
     ['Alternative', /alternative|indie/i], ['Dance', /dance|disco|garage/i], ['Electronic', /electr|edm|ambient|downtempo/i], ['Country', /country/i], ['Jazz', /jazz/i], ['Classical', /classical|opera/i], ['Reggae', /reggae|dancehall/i], ['Latin', /latin|reggaeton/i]];
   const HOME_WAIT_MS = 10000, MIN_SHELF_ITEMS = 3, MAX_SHELVES = 8, HOME_SECTIONS = ['HomeGenericSectionData', 'HomeFeedBaselineSectionData'];
   const MIN_LIKED_ALBUMS = 8, MAX_SINGLE_ALBUMS = 60;
-  const BEAT_RANGE_DB = 15, BEAT_EARLY_SECONDS = 0.05, MIN_BEAT_LEVEL = 0.2, MIN_BASS_LEVEL = 0.15, DARK_FROM = 0.15, DARK_TO = 0.85;
+  const BEAT_RANGE_DB = 15, BEAT_EARLY_SECONDS = 0.05, MIN_BEAT_LEVEL = 0.2, MIN_BASS_LEVEL = 0.15, DARK_FROM = 0.15, DARK_TO = 0.85, SONG_RANGE_DB = 24;
   const beatCache = new Map(), genreQueue = new Map();
   let genreRunning = false, genreWatcher = () => {};
   const MIX_LENGTH = 50, MIX_RELEASES = 3, MIX_NEAREST_ARTISTS = 16, MIX_SIMILAR_ARTISTS = 8, MIX_SONGS_EACH = 3;
@@ -440,6 +440,12 @@
         const strength = Math.max(0, 1 + (peak - top) / BEAT_RANGE_DB);
         return { at: beat.start * 1000, bass: dark * dark * strength, level: strength * strength * (.3 + .7 * (levels[section] - quietest) / range) };
       }).filter(hit => hit.level >= MIN_BEAT_LEVEL || hit.bass >= MIN_BASS_LEVEL);
+      // Between the beats, how loud and how deep the song is at each moment, at the peak of every short sound.
+      hits.flow = segments.map(s => {
+        const loud = Math.min(1, Math.max(0, 1 + (s.loudness_max - top) / SONG_RANGE_DB));
+        const dark = Math.min(1, Math.max(0, (lightest - s.timbre[1]) / ((lightest - darkest) || 1)));
+        return { at: (s.start + s.loudness_max_time) * 1000, loud: loud * loud, bass: dark * loud * loud };
+      });
       beatCache.set(uri, hits);
       return hits;
     },
