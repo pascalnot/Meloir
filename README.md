@@ -126,7 +126,7 @@ two never play at once. They can be turned off in Settings.
 
 **Lyrics.** Word timing comes from [LyricsPlus](https://lyricsplus.binimum.org),
 [lrc.red](https://lrc.red) and [LRCLIB](https://lrclib.net), which receive the song's title, artist and length. It isn't available for
-every song, and those songs use Spotify's line timing instead.
+every song: some have only line timing, and songs none of them has show no lyrics.
 
 **Glow.** The beat and drop glow follow Spotify's analysis of each song, not the sound itself, so a
 song without an analysis does not glow.

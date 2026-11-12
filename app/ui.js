@@ -1419,8 +1419,6 @@
         h('h2', {}, 'Focus mode'),
         setting('Open in focus mode', null, prefSwitch('focusOnOpen', 'Open in focus mode')),
         setting('Cover tilt', 'The cover leans toward the mouse in focus mode.', prefSwitch('coverTilt', 'Cover tilt', applyLook)),
-        setting('Spotify\'s lyrics', 'Shows the lyrics Spotify has, timed line by line, instead of word-by-word lyrics from other services.',
-          prefSwitch('spotifyLyrics', 'Spotify\'s lyrics', () => { lyricsFor = null; syncLyrics(); })),
         h('div', { className: 'set' },
           h('div', { className: 'line' }, h('b', {}, 'Blur behind the cover'), blurValue),
           h('div', { className: 'wide' }, blurLevel)),
@@ -1911,9 +1909,7 @@
       if (!data.synced) lines = [];
     };
 
-    // Every source is asked at once: Spotify's lines show as soon as they arrive, and better timing
-    // replaces them whenever it comes, so a slow service never leaves the screen empty. With Spotify's
-    // lyrics chosen, the other services are only asked when Spotify has none. A failed lookup is tried again.
+    // Lyrics come from the services in data.js, never from Spotify. A failed lookup is tried again.
     let retryTimer = 0;
     const syncLyrics = () => {
       if (lyricsFor === currentUri) return;
@@ -1940,10 +1936,7 @@
         leaving.cancel();
         if (!calm()) lyricsBox.animate([{ opacity: 0 }, { opacity: 1 }], { duration: LYRICS_ARRIVE_MS, easing: 'ease-out' });
       };
-      const timed = () => song ? meloir.data.timedLyrics(uri, song).then(data => offer(data, data && data.wordTimed ? 3 : 2)) : Promise.resolve();
-      const lookups = meloir.prefs.spotifyLyrics
-        ? [meloir.data.lyrics(uri, coverUrl).then(data => data ? offer(data, 1) : timed())]
-        : [meloir.data.lyrics(uri, coverUrl).then(data => offer(data, 1)), timed()];
+      const lookups = [song ? meloir.data.timedLyrics(uri, song).then(data => offer(data, 1)) : Promise.resolve()];
       Promise.allSettled(lookups).then(results => {
         if (lyricsFor !== uri || shownRank) return;
         leaving.cancel();

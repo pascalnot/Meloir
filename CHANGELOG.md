@@ -10,7 +10,10 @@ What changed in each version of Meloir, newest first.
 
 - **Back and forward.** Arrows next to the menu in the title bar, Alt+Left and Alt+Right, or the mouse's side buttons. Each page comes back where you had scrolled to.
 - **Ad breaks blocked.** Settings → Ads counts every ad break Meloir stopped, for good instead of per session.
-- **Spotify's lyrics.** A switch in Settings → Focus mode that always shows the lyrics Spotify has, timed line by line. Other services are only asked when Spotify has none.
+
+### Changed
+
+- Lyrics no longer come from Spotify (Musixmatch). Only LyricsPlus, lrc.red and LRCLIB are asked, so a song none of them has shows no lyrics.
 
 ### Fixed
 
