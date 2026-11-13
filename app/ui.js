@@ -187,6 +187,7 @@
     .genres { position: absolute; left: 0; top: calc(100% + 8px); z-index: 6; width: 240px; padding: 10px; background: var(--menu); border: 1px solid var(--menu-line); border-radius: 8px;
       opacity: 0; visibility: hidden; transform: translateY(-6px); transition: opacity .2s, transform .25s var(--ease), visibility .2s; }
     .genres.on { opacity: 1; visibility: visible; transform: none; }
+    .genres.sorts { width: 180px; }
     .genres .filter { width: 100%; margin: 0 0 8px; padding: 4px 6px; }
     .genrelist { max-height: 240px; overflow: hidden auto; }
     .genrelist button { display: flex; width: 100%; justify-content: space-between; gap: 12px; padding: 7px 8px; border-radius: 4px; color: var(--menu-text); font-size: 13px; }
@@ -911,10 +912,23 @@
         ['Length', (a, b) => (a.duration_ms || 0) - (b.duration_ms || 0)],
         ['Recently added', (a, b) => (b.added || 0) - (a.added || 0)],
       ];
-      const sortButton = h('button', { className: 'genrebutton', ariaLabel: 'Sort songs', onclick: () => {
-        const box = sortButton.getBoundingClientRect();
-        showMenu({ clientX: box.left, clientY: box.bottom + 8 }, SORTS.map(([name, key]) => [name, () => sortBy(name, key)]));
-      } }, sortLabel, svg('M2 4l4 4 4-4', '0 0 12 12'));
+      // The same panel as the genre menu, without its search.
+      const sortList = h('div', { className: 'genrelist' });
+      const sortPanel = h('div', { className: 'genres sorts' }, sortList);
+      const closeSorts = () => {
+        sortPanel.classList.remove('on');
+        window.removeEventListener('mousedown', outsideSorts, true);
+      };
+      const outsideSorts = event => { if (!event.composedPath().includes(sortWrap)) closeSorts(); };
+      const openSorts = () => {
+        sortList.replaceChildren(...SORTS.map(([name, key]) => h('button', { className: (sort || SORTS[0][0]) === name ? 'on' : '',
+          onclick: () => { closeSorts(); sortBy(name, key); } }, h('span', {}, name))));
+        sortPanel.classList.add('on');
+        window.addEventListener('mousedown', outsideSorts, true);
+      };
+      const sortButton = h('button', { className: 'genrebutton', ariaLabel: 'Sort songs',
+        onclick: () => (sortPanel.classList.contains('on') ? closeSorts() : openSorts()) }, sortLabel, svg('M2 4l4 4 4-4', '0 0 12 12'));
+      const sortWrap = h('div', { className: 'genrewrap' }, sortButton, sortPanel);
       const box = h('input', { className: 'filter', placeholder: 'Search songs', spellcheck: false, ariaLabel: 'Search songs', oninput: async () => {
         query = plain(box.value.trim());
         apply();
@@ -972,7 +986,7 @@
 
       main.onscroll = more;
       setTimeout(more);
-      return { list, none, tools: [box, genreWrap, h('div', { className: 'genrewrap' }, sortButton)], play: playAll };
+      return { list, none, tools: [box, genreWrap, sortWrap], play: playAll };
     };
 
     const header = (images, title, sub, contextUri, extra, play = () => meloir.play(contextUri)) => h('div', { className: 'head' }, cover(images),
