@@ -4,7 +4,7 @@ What changed in each version of Meloir, newest first.
 
 ## 1.5.0
 
-*Not released yet*
+*18 November 2026*
 
 ### New
 
