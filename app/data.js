@@ -130,7 +130,9 @@
       }
     }
   };
-  const foldTitle = text => fold(String(text || '').split(' - ')[0].replace(/\s*[([][^)\]]*[)\]]/g, ''));
+  // The title without what Spotify adds, such as " - 2011 Remaster" or " (feat. X)".
+  const plainTitle = text => String(text || '').split(' - ')[0].replace(/\s*[([][^)\]]*[)\]]/g, '').trim();
+  const foldTitle = text => fold(plainTitle(text));
   const sameTitle = (a, b) => {
     const x = foldTitle(a), y = foldTitle(b);
     return !!x && !!y && (x === y || x.startsWith(y) || y.startsWith(x));
@@ -147,30 +149,57 @@
     return response;
   };
 
+  // Backing vocals come in brackets, which the smaller row they are shown in already says.
+  const backing = words => {
+    if (!words.length) return undefined;
+    const row = words.map(word => ({ ...word }));
+    row[0].text = row[0].text.replace(/^\s*\(/, '');
+    row[row.length - 1].text = row[row.length - 1].text.replace(/\)\s*$/, '');
+    return row;
+  };
+
+  // Duets: the first singer stays on the left and the second goes right, as do the fourth, sixth...
+  // Lines sung together, and songs with one singer, stay on the left.
+  const withSingers = (lines, together) => {
+    const singers = [];
+    for (const line of lines) if (line.voice && !together(line.voice) && !singers.includes(line.voice)) singers.push(line.voice);
+    for (const line of lines) {
+      if (singers.length > 1 && singers.indexOf(line.voice) % 2 === 1) line.right = true;
+      delete line.voice;
+    }
+    return lines;
+  };
+
   // Each word's own start and length. A word split into syllables has `part` set on its pieces.
   const toTimedLine = line => {
-    const pieces = (line.syllabus || []).filter(piece => !piece.isBackground && piece.text);
+    const all = (line.syllabus || []).filter(piece => piece.text);
+    const pieces = all.filter(piece => !piece.isBackground);
     // Many songs have no word timing, but still the line's real length.
     if (!pieces.length) {
       return line.text && line.text.trim() ? { start: Number(line.time), end: Number(line.time) + Number(line.duration), text: line.text } : null;
     }
+    const toWord = piece => ({
+      at: Number(piece.time),
+      end: Number(piece.time) + Number(piece.duration),
+      text: piece.part || /\s$/.test(piece.text) ? piece.text : piece.text + ' ',
+    });
     return {
       start: Number(line.time),
       text: pieces.map(piece => piece.text).join(''),
-      words: pieces.map(piece => ({
-        at: Number(piece.time),
-        end: Number(piece.time) + Number(piece.duration),
-        text: piece.part || /\s$/.test(piece.text) ? piece.text : piece.text + ' ',
-      })),
+      words: pieces.map(toWord),
+      background: backing(all.filter(piece => piece.isBackground).map(toWord)),
+      voice: line.element && line.element.singer,
     };
   };
 
   // Answers are kept, so a song is only asked for once. The service limits how fast it is asked.
-  const LYRICS_CACHE = 'meloir.lyrics5.', LYRICS_CACHE_INDEX = 'meloir.lyrics5.index', LYRICS_CACHE_SIZE = 200, RATE_LIMIT_WAIT_MS = 120000;
+  const LYRICS_CACHE = 'meloir.lyrics8.', LYRICS_CACHE_INDEX = 'meloir.lyrics8.index', LYRICS_CACHE_SIZE = 200, RATE_LIMIT_WAIT_MS = 120000;
 
-  // Earlier versions kept answers from fewer sources, or with words timed too long.
+  // Earlier versions kept answers from fewer sources, with words timed too long, kept lines
+  // without words where lrc.red had them, left out backing vocals and singers, or kept LRCLIB's
+  // rougher words where lrc.red had better ones.
   try {
-    Object.keys(localStorage).filter(key => /^meloir\.lyrics[234]?\./.test(key)).forEach(key => localStorage.removeItem(key));
+    Object.keys(localStorage).filter(key => /^meloir\.lyrics[234567]?\./.test(key)).forEach(key => localStorage.removeItem(key));
   } catch (e) { /* nothing kept */ }
 
   const cached = uri => {
@@ -186,46 +215,79 @@
     } catch (e) { /* not kept */ }
   };
 
+  // With "(feat. ...)" in the title it often doesn't answer at all, so it gets the plain title.
   const fromLyricsPlus = async ({ title, artist, durationMs }) => {
-    const query = 'title=' + encodeURIComponent(title) + '&artist=' + encodeURIComponent(artist)
+    const query = 'title=' + encodeURIComponent(plainTitle(title) || title) + '&artist=' + encodeURIComponent(artist)
       + (durationMs ? '&duration=' + Math.round(durationMs / 1000) : '');
     const response = await ask('https://lyricsplus.binimum.org/v2/lyrics/get?' + query);
     if (!response.ok) return null;
     const answer = await response.json();
     if (answer.metadata && answer.metadata.title && !sameTitle(answer.metadata.title, title)) return null;
-    return (answer.lyrics || []).map(toTimedLine).filter(Boolean);
+    // Its voices follow Apple's: v1000 and up are everyone singing together.
+    return withSingers((answer.lyrics || []).map(toTimedLine).filter(Boolean), voice => /^v\d{4,}$/.test(voice));
   };
 
   // TTML times: "11.859", "1:02.345" or "00:01:02.345".
   const clock = value => String(value || '').replace(/s$/, '').split(':').reduce((total, part) => total * 60 + Number(part), 0) * 1000;
 
   // A <p> per line and a timed <span> per word. The text between two spans is the space after a
-  // word. Spans with a role are backing vocals or translations.
-  const ttmlLine = p => {
-    const words = [];
-    for (const node of p.childNodes) {
+  // word. A span with the role x-bg holds the backing vocals' own timed spans; other roles are
+  // translations. The singer is on the line or on the part of the song around it.
+  const ttmlWords = (parent, words, backgroundWords) => {
+    for (const node of parent.childNodes) {
       if (node.nodeType === Node.TEXT_NODE) {
         if (words.length) words[words.length - 1].text += node.textContent;
-      } else if (node.nodeName === 'span' && node.getAttribute('begin') && !node.getAttribute('ttm:role')) {
-        words.push({ at: clock(node.getAttribute('begin')), end: clock(node.getAttribute('end')), text: node.textContent });
+      } else if (node.nodeName === 'span') {
+        const role = node.getAttribute('ttm:role');
+        if (role === 'x-bg' && backgroundWords) ttmlWords(node, backgroundWords, null);
+        else if (!role && node.getAttribute('begin')) words.push({ at: clock(node.getAttribute('begin')), end: clock(node.getAttribute('end')), text: node.textContent });
       }
     }
+  };
+  const ttmlVoice = p => {
+    for (let node = p; node && node.getAttribute; node = node.parentNode) if (node.getAttribute('ttm:agent')) return node.getAttribute('ttm:agent');
+    return undefined;
+  };
+  const ttmlLine = p => {
+    const words = [], backgroundWords = [];
+    ttmlWords(p, words, backgroundWords);
     const start = clock(p.getAttribute('begin'));
-    if (words.length) return { start, text: words.map(word => word.text).join('').trim(), words };
+    if (words.length) return { start, text: words.map(word => word.text).join('').trim(), words, background: backing(backgroundWords), voice: ttmlVoice(p) };
     const text = p.textContent.trim();
     return text ? { start, end: clock(p.getAttribute('end')), text } : null;
   };
+  const TTML_META = 'http://www.w3.org/ns/ttml#metadata';
 
+  // The length lrc.red's search lists can be seconds off (Outside by Calvin Harris: 223 s, really
+  // 227 s), so the closest few are fetched and judged by the length in the file itself.
+  const LRC_RED_TRIES = 3;
+  // Its search finds nothing for words it doesn't index, such as "feat." ("Outside (feat. Ellie
+  // Goulding) Calvin Harris" has no hits, "Outside Calvin Harris" has), so the plain title is asked first.
+  const lrcRedHits = async (title, artist) => {
+    for (const name of [...new Set([plainTitle(title) || title, title])]) {
+      const search = await ask('https://lrc.red/search.json?q=' + encodeURIComponent(name + ' ' + artist));
+      if (!search.ok) return [];
+      const hits = (await search.json()).hits || [];
+      if (hits.length) return hits;
+    }
+    return [];
+  };
   const fromLrcRed = async ({ title, artist, durationMs }) => {
-    const search = await ask('https://lrc.red/search.json?q=' + encodeURIComponent(title + ' ' + artist));
-    if (!search.ok) return null;
-    const hit = ((await search.json()).hits || []).find(candidate => sameTitle(candidate.title, title) && sameArtist(candidate.artist, artist)
-      && (!durationMs || !candidate.duration || Math.abs(candidate.duration * 1000 - durationMs) <= SAME_SONG_MS));
-    if (!hit || !hit.isrc) return null;
-    const file = await ask('https://lrc.red/s/' + encodeURIComponent(hit.isrc) + '.ttml');
-    if (!file.ok) return null;
-    const xml = new DOMParser().parseFromString(await file.text(), 'application/xml');
-    return [...xml.getElementsByTagName('p')].map(ttmlLine).filter(Boolean);
+    const off = candidate => (durationMs && candidate.duration ? Math.abs(candidate.duration * 1000 - durationMs) : 0);
+    const hits = (await lrcRedHits(title, artist)).filter(candidate => candidate.isrc && sameTitle(candidate.title, title)
+      && sameArtist(candidate.artist, artist)).sort((a, b) => off(a) - off(b)).slice(0, LRC_RED_TRIES);
+    for (const hit of hits) {
+      const file = await ask('https://lrc.red/s/' + encodeURIComponent(hit.isrc) + '.ttml');
+      if (!file.ok) continue;
+      const xml = new DOMParser().parseFromString(await file.text(), 'application/xml');
+      const body = xml.getElementsByTagName('body')[0];
+      const length = body && body.getAttribute('dur') ? clock(body.getAttribute('dur')) : (hit.duration || 0) * 1000;
+      if (durationMs && length && Math.abs(length - durationMs) > SAME_SONG_MS) continue;
+      const groups = [...xml.getElementsByTagNameNS(TTML_META, 'agent')].filter(agent => agent.getAttribute('type') === 'group')
+        .map(agent => agent.getAttribute('xml:id'));
+      return withSingers([...xml.getElementsByTagName('p')].map(ttmlLine).filter(Boolean), voice => groups.includes(voice));
+    }
+    return null;
   };
 
   // LRCLIB's word timing comes as a small YAML file: a list of lines, each with its words.
@@ -291,35 +353,71 @@
     return lrcLines(found.syncedLyrics);
   };
 
-  const SOURCES = [{ name: 'LyricsPlus', get: fromLyricsPlus, askAgainAt: 0 }, { name: 'lrc.red', get: fromLrcRed, askAgainAt: 0 },
+  // Best first: lrc.red has the cleanest word timing, backing vocals and singers. LRCLIB's words
+  // often have only a start, and nothing about who sings.
+  const SOURCES = [{ name: 'lrc.red', get: fromLrcRed, askAgainAt: 0 }, { name: 'LyricsPlus', get: fromLyricsPlus, askAgainAt: 0 },
     { name: 'LRCLIB', get: fromLrclib, askAgainAt: 0 }];
+  const WORDS_GRACE_MS = 1500;
 
   // Many answers are labelled as word timed but have every time at 0: text with no timing.
   const hasTiming = lines => !!lines && lines.length > 0
     && lines.filter(line => (line.words && line.words.some(word => word.end > 0)) || line.end > line.start).length >= lines.length / 2;
 
-  // The first source with word timing wins, then the best with line lengths. A song is only
-  // remembered as having nothing when every source really answered.
-  const wordLyrics = async (uri, song) => {
-    const known = cached(uri);
-    if (known) return known.none ? null : known;
-    let best = null, unsure = false;
-    for (const source of SOURCES) {
-      if (Date.now() < source.askAgainAt) { unsure = true; continue; }
+  // All sources are asked at once, so a slow one holds nothing up. The first answer with word
+  // timing wins as soon as it is in; without one, the earliest source in the list with line
+  // lengths does. A song is only remembered as having nothing when every source really answered.
+  const asking = new Map();
+  const askAll = async (uri, song) => {
+    let unsure = false;
+    const answers = SOURCES.map(async source => {
+      if (Date.now() < source.askAgainAt) { unsure = true; return null; }
       try {
         const lines = await source.get(song);
-        if (!hasTiming(lines)) continue;
-        const lyrics = { synced: true, wordTimed: lines.some(line => line.words), source: source.name, lines };
-        if (lyrics.wordTimed) { best = lyrics; break; }
-        best = best || lyrics;
+        return hasTiming(lines) ? { synced: true, wordTimed: lines.some(line => line.words), source: source.name, lines } : null;
       } catch (e) {
         unsure = true;
         if (e instanceof RateLimited) source.askAgainAt = Date.now() + RATE_LIMIT_WAIT_MS;
+        return null;
       }
+    });
+    // An answer with words waits for the better sources above it in the list, but not for long.
+    const firstWords = new Promise(resolve => {
+      const done = SOURCES.map(() => false), found = SOURCES.map(() => null);
+      let graceTimer = 0;
+      const decide = force => {
+        for (let i = 0; i < SOURCES.length; i++) {
+          if (found[i]) { clearTimeout(graceTimer); resolve(found[i]); return; }
+          if (!done[i] && !force) {
+            if (!graceTimer && found.some(Boolean)) graceTimer = setTimeout(() => decide(true), WORDS_GRACE_MS);
+            return;
+          }
+        }
+        if (done.every(Boolean)) resolve(null);
+      };
+      answers.forEach((answer, i) => answer.then(lyrics => {
+        done[i] = true;
+        found[i] = lyrics && lyrics.wordTimed ? lyrics : null;
+        decide(false);
+      }));
+    });
+    const words = await firstWords;
+    if (words) {
+      remember(uri, words);
+      return words;
     }
-    if (best) remember(uri, best);
-    else if (!unsure) remember(uri, { none: true });
+    const best = (await Promise.all(answers)).find(Boolean) || null;
+    // Lines without word timing are only kept when no source failed: the one that timed out may
+    // have had the words, so the song is asked again next time.
+    if (best && !unsure) remember(uri, best);
+    else if (!best && !unsure) remember(uri, { none: true });
     return best;
+  };
+  // Skipping back and forth asks for a song still being looked up: the same lookup answers both.
+  const wordLyrics = (uri, song) => {
+    const known = cached(uri);
+    if (known) return Promise.resolve(known.none ? null : known);
+    if (!asking.has(uri)) asking.set(uri, askAll(uri, song).finally(() => asking.delete(uri)));
+    return asking.get(uri);
   };
 
   meloir.data = {

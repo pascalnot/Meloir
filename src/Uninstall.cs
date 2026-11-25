@@ -8,7 +8,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Uninstall Meloir")]
 [assembly: AssemblyProduct("Meloir")]
-[assembly: AssemblyVersion("1.5.0.0")]
+[assembly: AssemblyVersion("1.5.1.0")]
 
 static class Program
 {

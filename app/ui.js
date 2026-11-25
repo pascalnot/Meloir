@@ -21,7 +21,7 @@
   const MIN_IDLE_SECONDS = 15, MAX_IDLE_SECONDS = 300, MAX_TILT_DEGREES = 5, QUEUE_LENGTH = 40, QUEUE_REFRESH_MS = 2500, SCROLLBAR_NEAR_PX = 72;
   const COVER_FADE_MS = 700, MELOIR_BAR_HEIGHT = 36, SPOTIFY_BAR_HEIGHT = 64, MAX_REVEAL_STAGGER = 10, ROW_SHOWN_AT = 0.5, CARD_SHOWN_AT = 0.2, LYRICS_RETRY_MS = 8000;
   const COVER_MOVE_MS = 520, COVER_WAIT_MS = 170, LYRICS_FADE_OUT_MS = 170, LYRICS_WAIT_MS = 230, LYRICS_FADE_IN_MS = 380;
-  const LYRICS_LEAVE_MS = 180, LYRICS_ARRIVE_MS = 420;
+  const LYRICS_LEAVE_MS = 180, LYRICS_ARRIVE_MS = 420, LYRICS_SETTLE_MS = 350;
   const EASE = 'cubic-bezier(.2,.8,.2,1)';
 
   const host = message => { if (window.meloirHost) window.meloirHost(message); };
@@ -469,6 +469,20 @@
     .fl.on .w { color: transparent; -webkit-background-clip: text; background-clip: text;
       background-image: linear-gradient(90deg, #fff calc(var(--w, 0%) * 1.22 - 22%), #4a4a4a calc(var(--w, 0%) * 1.22)); }
     .fl.on .w.lit { text-shadow: 0 0 14px rgba(255, 255, 255, .3); }
+    /* In a duet the second singer's lines are on the right. Backing vocals are a smaller, dimmer row. */
+    .fl.duet { text-align: right; transform-origin: right center; }
+    /* Already the colour of a past line, so nothing changes when the backing vocals end. */
+    .fl.on.echo { transform: none; color: #2a2a2a; }
+    .fl.on.echo > .w { background-image: none; color: inherit; text-shadow: none; }
+    .fl .bg { margin-top: 4px; font-size: .7em; font-weight: 500; opacity: .75; }
+    /* Backing words always keep their light, whose colours fade, so a row dims slowly when its line ends. */
+    .fl { --bg-lit: #333; --bg-rest: #333; }
+    .fl:hover { --bg-lit: #6a6a6a; --bg-rest: #6a6a6a; }
+    .fl.past { --bg-lit: #2a2a2a; --bg-rest: #2a2a2a; }
+    .fl.on { --bg-lit: #fff; --bg-rest: #4a4a4a; }
+    .fl .bg .w { color: transparent; -webkit-background-clip: text; background-clip: text; transition: --bg-lit 1.2s ease-out, --bg-rest .9s, text-shadow .8s;
+      background-image: linear-gradient(90deg, var(--bg-lit) calc(var(--w, 0%) * 1.22 - 22%), var(--bg-rest) calc(var(--w, 0%) * 1.22)); }
+    .fl.on .bg .w { transition: --bg-lit .15s, --bg-rest .9s, text-shadow .8s; }
     .fctl { position: absolute; left: 50%; bottom: 26px; display: flex; gap: 22px; align-items: center; transform: translate(-50%, 10px);
       opacity: 0; transition: opacity .3s, transform .3s var(--ease); }
     #focus.awake .fctl { opacity: 1; transform: translate(-50%, 0); }
@@ -1982,12 +1996,15 @@
       lines = [];
       focusLyrics.style.transform = '';
       if (!data) { focusLyrics.replaceChildren(); return; }
+      const toWords = list => list.map(word => ({ el: h('span', { className: 'w' }, word.text), at: word.at, end: word.end }));
       lines = data.lines.map(line => {
-        const words = line.words
-          ? line.words.map(word => ({ el: h('span', { className: 'w' }, word.text), at: word.at, end: word.end }))
-          : timedWords(line.text, line.start, line.end || line.start);
-        const el = h('div', { className: 'fl', onclick: () => { if (data.synced) meloir.services.player.seekTo(line.start); } }, words.map(w => w.el));
-        return { start: line.start, end: Math.max(line.start, ...words.map(w => w.end)), el, words };
+        const words = line.words ? toWords(line.words) : timedWords(line.text, line.start, line.end || line.start);
+        // Backing vocals sit in a smaller row under the line and light up on their own timing.
+        const behind = line.background ? toWords(line.background) : [];
+        const el = h('div', { className: 'fl' + (line.right ? ' duet' : ''), onclick: () => { if (data.synced) meloir.services.player.seekTo(line.start); } },
+          words.map(w => w.el), behind.length ? h('div', { className: 'bg' }, behind.map(w => w.el)) : null);
+        const all = [...words, ...behind];
+        return { start: line.start, end: Math.max(line.start, ...all.map(w => w.end)), sung: Math.max(line.start, ...words.map(w => w.end)), el, words: all };
       });
       focusLyrics.replaceChildren(...lines.map(line => line.el));
       if (!data.synced) lines = [];
@@ -2020,7 +2037,11 @@
         leaving.cancel();
         if (!calm()) lyricsBox.animate([{ opacity: 0 }, { opacity: 1 }], { duration: LYRICS_ARRIVE_MS, easing: 'ease-out' });
       };
-      const lookups = [song ? meloir.data.timedLyrics(uri, song).then(data => offer(data, 1)) : Promise.resolve()];
+      // Lyrics wait until the song has played for a moment, so skipping through songs doesn't
+      // flash each one's lyrics on the way.
+      const asked = performance.now();
+      const settled = () => new Promise(resolve => setTimeout(resolve, Math.max(0, LYRICS_SETTLE_MS - (performance.now() - asked))));
+      const lookups = [song ? meloir.data.timedLyrics(uri, song).then(async data => { await settled(); offer(data, 1); }) : settled()];
       Promise.allSettled(lookups).then(results => {
         if (lyricsFor !== uri || shownRank) return;
         leaving.cancel();
@@ -2077,11 +2098,14 @@
       // When the next line starts before the last one is sung to the end, both stay lit until it is.
       const held = [];
       for (let i = index - 1; i >= 0 && i >= index - LYRICS_HOLD_LINES; i--) if (s.position < lines[i].end) held.push(i);
-      const lit = held.join(',') + '|' + index;
+      // A line held only for its backing vocals dims its own words: just the backing row stays lit.
+      const echoes = held.filter(i => s.position >= lines[i].sung);
+      const lit = held.join(',') + '|' + index + '|' + echoes.join(',');
       if (lit !== litLines) {
         litLines = lit;
         lines.forEach((line, i) => {
           line.el.classList.toggle('on', i === index || held.includes(i));
+          line.el.classList.toggle('echo', echoes.includes(i));
           line.el.classList.toggle('past', i < index && !held.includes(i));
         });
       }
@@ -2340,6 +2364,11 @@
     const shadow = rootEl.attachShadow({ mode: 'open' });
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(CSS);
+    // Colours registered as colours can fade inside a gradient, so backing vocals fade out when
+    // their line ends. Registering only works for the whole page, not inside the shadow root.
+    for (const [name, initialValue] of [['--bg-lit', '#333'], ['--bg-rest', '#333']]) {
+      try { CSS.registerProperty({ name, syntax: '<color>', inherits: true, initialValue }); } catch (e) { /* already registered */ }
+    }
     shadow.adoptedStyleSheets = [sheet];
     shadow.append(app);
     document.documentElement.append(rootEl);

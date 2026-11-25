@@ -2,6 +2,22 @@
 
 What changed in each version of Meloir, newest first.
 
+## 1.5.1
+
+*25 November 2026*
+
+### New
+
+- **Backing vocals.** In focus mode, backing vocals show in a smaller row under the line they go with and light up word by word on their own timing. When they run on into the next line, only they stay lit.
+- **Duets.** When a song has two singers, the second one's lines are on the right, so you can see who sings what. Lines sung together stay on the left.
+
+### Fixed
+
+- Focus mode now fills the whole screen, without the thin window border and rounded corners Windows 11 draws around it.
+- Lyrics show up faster: all lyrics services are asked at once instead of one after another, so a slow one no longer holds up the rest.
+- Skipping quickly through songs no longer flashes each song's lyrics for a moment.
+- More songs get word-by-word lyrics. lrc.red found nothing for titles with "feat." in them, turned down songs whose length its search lists a few seconds off, and a song stayed without word timing for good when a lyrics service was slow to answer once.
+
 ## 1.5.0
 
 *18 November 2026*

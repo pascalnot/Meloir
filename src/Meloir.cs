@@ -20,7 +20,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Meloir")]
 [assembly: AssemblyProduct("Meloir")]
-[assembly: AssemblyVersion("1.5.0.0")]
+[assembly: AssemblyVersion("1.5.1.0")]
 
 // One DevTools connection to the page.
 class Cdp
@@ -253,6 +253,20 @@ static class WindowControls
     const int ShowRestored = 9, ShowMaximized = 3;
     const uint Nearest = 2, KeepOrder = 0x14;
 
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
+
+    // Windows 11 draws a thin border and rounds the corners of every window, even one that covers the screen.
+    const int CornerAttribute = 33, BorderColorAttribute = 34;
+    const int DefaultRounding = 0, NoRounding = 1;
+    const int BorderDefault = unchecked((int)0xFFFFFFFF), BorderNone = unchecked((int)0xFFFFFFFE);
+
+    static void SetFrame(IntPtr window, int border, int corners)
+    {
+        // Older Windows doesn't know these attributes and refuses them, which is fine: it has no such border.
+        DwmSetWindowAttribute(window, BorderColorAttribute, ref border, sizeof(int));
+        DwmSetWindowAttribute(window, CornerAttribute, ref corners, sizeof(int));
+    }
+
     static bool filling, wasMaximized;
     static Rect before;
 
@@ -286,9 +300,11 @@ static class WindowControls
             GetWindowRect(window, out before);
             MonitorInfo info = new MonitorInfo { Size = Marshal.SizeOf(typeof(MonitorInfo)) };
             GetMonitorInfo(MonitorFromWindow(window, Nearest), ref info);
+            SetFrame(window, BorderNone, NoRounding);
             SetWindowPos(window, IntPtr.Zero, info.Screen.Left, info.Screen.Top, info.Screen.Right - info.Screen.Left, info.Screen.Bottom - info.Screen.Top, KeepOrder);
             return;
         }
+        SetFrame(window, BorderDefault, DefaultRounding);
         SetWindowPos(window, IntPtr.Zero, before.Left, before.Top, before.Right - before.Left, before.Bottom - before.Top, KeepOrder);
         if (wasMaximized) ShowWindow(window, ShowMaximized);
     }
@@ -475,7 +491,7 @@ static class Startup
 // and only if the download matches the checksum GitHub gives for it.
 static class Updater
 {
-    public const string Release = "v1.5.0";
+    public const string Release = "v1.5.1";
     const string Feed = "https://api.github.com/repos/pascalnot/Meloir/releases/latest";
     const string Downloads = "https://github.com/pascalnot/Meloir/releases/download/";
     const string AssetName = "MeloirSetup.exe", DigestPrefix = "sha256:";

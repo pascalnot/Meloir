@@ -34,7 +34,8 @@ Meloir does not use Spicetify, and it works on a free account.
 ### Focus mode
 
 The cover on a black screen, with a soft glow taken from its colours. Lyrics follow the song word by
-word where timing is available. The cover leans toward the mouse, and the line at the bottom pulses
+word where timing is available, with backing vocals in a smaller row under the line and the second
+singer of a duet on the right. The cover leans toward the mouse, and the line at the bottom pulses
 on beats and flashes on drops.
 
 <img src="docs/media/focus.gif" width="800" alt="Focus mode with the cover leaning toward the mouse">
